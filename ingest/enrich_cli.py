@@ -52,7 +52,14 @@ def main() -> None:
     print(f"Imported {summary['imported']} scrobbles "
           f"(skipped {summary['skipped']}).")
     print(f"Plays by source: {summary['by_source']}")
-    print(f"Artists enriched: {summary['enriched']}")
+    enriched = summary["enriched"]
+    print(f"Artists enriched: spotify={enriched['spotify']} "
+          f"lastfm={enriched['lastfm']} none={enriched['none']} "
+          f"skipped={enriched['skipped']} deferred={enriched['deferred']}")
+    if enriched["stopped_early"]:
+        print("  NOTE: stopped early — Spotify is rate-limiting. The import and "
+              "enriched artists are saved; re-run later to fill in the deferred "
+              "artists (it resumes automatically).")
     print(f"Canonical (deduped) plays: {summary['canonical_plays']}")
     print("Bucket distribution:")
     for bucket, count in summary["buckets"].items():
