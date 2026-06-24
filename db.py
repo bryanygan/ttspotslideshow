@@ -60,6 +60,14 @@ CREATE TABLE IF NOT EXISTS artists (
 );
 """
 
+CREATE_FEATURED = """
+CREATE TABLE IF NOT EXISTS featured_tracks (
+    track_key          TEXT PRIMARY KEY,
+    last_featured_date TEXT NOT NULL,
+    times_featured     INTEGER NOT NULL
+);
+"""
+
 
 def _iso_to_unix(iso: str) -> int:
     """ISO-8601 timestamp (may end in 'Z') -> epoch seconds."""
@@ -92,6 +100,7 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.execute("DROP TABLE plays_old")
     conn.execute(CREATE_ARTIST_GENRES)
     conn.execute(CREATE_ARTISTS)
+    conn.execute(CREATE_FEATURED)
     conn.executescript(CREATE_INDEXES)
 
 
@@ -309,3 +318,26 @@ def bucket_distribution(conn: sqlite3.Connection) -> dict:
         "GROUP BY primary_bucket ORDER BY c DESC"
     ).fetchall()
     return {r["primary_bucket"]: r["c"] for r in rows}
+
+
+def featured_history(conn: sqlite3.Connection) -> dict:
+    """Return {track_key: last_featured_date} for every previously featured track."""
+    rows = conn.execute(
+        "SELECT track_key, last_featured_date FROM featured_tracks"
+    ).fetchall()
+    return {r["track_key"]: r["last_featured_date"] for r in rows}
+
+
+def record_featured(conn: sqlite3.Connection, track_keys, run_date: str) -> None:
+    """Record that the given track_keys were featured on run_date (YYYY-MM-DD)."""
+    for key in track_keys:
+        conn.execute(
+            """
+            INSERT INTO featured_tracks (track_key, last_featured_date, times_featured)
+            VALUES (?, ?, 1)
+            ON CONFLICT(track_key) DO UPDATE SET
+                last_featured_date = excluded.last_featured_date,
+                times_featured = featured_tracks.times_featured + 1
+            """,
+            (key, run_date),
+        )
