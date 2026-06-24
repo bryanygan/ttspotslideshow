@@ -1,7 +1,6 @@
 """Stream-parse a Last.fm scrobble export into the plays table."""
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Iterator
 import xml.etree.ElementTree as ET
 
