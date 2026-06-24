@@ -187,3 +187,34 @@ def play_count() -> int:
     """Total number of logged plays (handy for a quick sanity check)."""
     with connect() as conn:
         return conn.execute("SELECT COUNT(*) AS c FROM plays").fetchone()["c"]
+
+
+def insert_lastfm_play(
+    conn: sqlite3.Connection,
+    *,
+    track_id: str,
+    name: str,
+    artist: str,
+    album_art_url: str,
+    played_at: str,
+    played_at_unix: int,
+) -> bool:
+    """Insert one Last.fm scrobble. Returns True if a new row was added."""
+    cur = conn.execute(
+        """
+        INSERT OR IGNORE INTO plays
+            (track_id, name, artist, artist_id, artist_genre, album_art_url,
+             popularity, played_at, source, played_at_unix)
+        VALUES (?, ?, ?, NULL, NULL, ?, NULL, ?, 'lastfm', ?)
+        """,
+        (track_id, name, artist, album_art_url, played_at, played_at_unix),
+    )
+    return cur.rowcount > 0
+
+
+def play_count_by_source(conn: sqlite3.Connection) -> dict:
+    """Return {source: count} over the plays table."""
+    rows = conn.execute(
+        "SELECT source, COUNT(*) AS c FROM plays GROUP BY source"
+    ).fetchall()
+    return {r["source"]: r["c"] for r in rows}
