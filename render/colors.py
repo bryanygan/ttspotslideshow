@@ -24,8 +24,12 @@ def clamp_color(
     """Lift a color to a minimum brightness/saturation so gradients stay visible."""
     r, g, b = (c / 255 for c in rgb)
     h, s, v = colorsys.rgb_to_hsv(r, g, b)
-    s = max(s, min_sat)
-    v = max(v, min_lum / 255)
+    if s == 0.0:
+        # achromatic input: keep it neutral, only enforce the brightness floor
+        v = max(v, min_lum / 255)
+    else:
+        s = max(s, min_sat)
+        v = max(v, min_lum / 255)
     r, g, b = colorsys.hsv_to_rgb(h, s, v)
     return tuple(int(round(c * 255)) for c in (r, g, b))
 
@@ -42,4 +46,4 @@ def vertical_gradient(
         t = y / (height - 1) if height > 1 else 0
         color = tuple(int(round(top[i] * (1 - t) + bottom[i] * t)) for i in range(3))
         column.putpixel((0, y), color)
-    return column.resize((width, height))
+    return column.resize((width, height), resample=Image.Resampling.NEAREST)

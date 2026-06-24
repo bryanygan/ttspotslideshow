@@ -26,3 +26,8 @@ def test_vertical_gradient_top_and_bottom():
     bottom = grad.getpixel((5, 99))
     assert abs(top[0] - 200) <= 4 and abs(top[1] - 100) <= 4
     assert abs(bottom[0] - 14) <= 4 and abs(bottom[2] - 14) <= 4
+
+
+def test_clamp_color_grey_stays_grey():
+    r, g, b = clamp_color((128, 128, 128))
+    assert abs(r - g) <= 5 and abs(g - b) <= 5
