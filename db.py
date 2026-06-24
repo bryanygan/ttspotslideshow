@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Iterator, Optional
 
 from config import DB_PATH, ensure_dirs
+from text_norm import normalize
 
 CREATE_PLAYS = """
 CREATE TABLE IF NOT EXISTS plays (
@@ -218,3 +219,36 @@ def play_count_by_source(conn: sqlite3.Connection) -> dict:
         "SELECT source, COUNT(*) AS c FROM plays GROUP BY source"
     ).fetchall()
     return {r["source"]: r["c"] for r in rows}
+
+
+def canonical_plays(conn: sqlite3.Connection, window_seconds: int = 120) -> list:
+    """Return plays with cross-source duplicates collapsed (Spotify preferred)."""
+    rows = conn.execute(
+        "SELECT * FROM plays WHERE played_at_unix IS NOT NULL "
+        "ORDER BY played_at_unix ASC"
+    ).fetchall()
+
+    result: list = []
+    recent: list[dict] = []  # kept rows still inside the window
+    for row in rows:
+        unix = row["played_at_unix"]
+        key = (normalize(row["artist"]), normalize(row["name"]))
+        recent = [r for r in recent if unix - r["unix"] <= window_seconds]
+
+        twin = next(
+            (r for r in recent if r["key"] == key and r["source"] != row["source"]),
+            None,
+        )
+        if twin is not None:
+            # Cross-source duplicate. Prefer the Spotify row.
+            if row["source"] == "spotify" and twin["source"] == "lastfm":
+                result[twin["index"]] = row
+                twin["source"] = "spotify"
+            continue
+
+        result.append(row)
+        recent.append(
+            {"unix": unix, "key": key, "source": row["source"],
+             "index": len(result) - 1}
+        )
+    return result
