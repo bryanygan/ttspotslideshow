@@ -20,16 +20,17 @@ def clamp_color(
     rgb: tuple[int, int, int],
     min_lum: int = 50,
     min_sat: float = 0.20,
+    max_lum: int = 210,
 ) -> tuple[int, int, int]:
-    """Lift a color to a minimum brightness/saturation so gradients stay visible."""
+    """Lift dark colors and cap bright ones so gradients stay visible but not washed out."""
     r, g, b = (c / 255 for c in rgb)
     h, s, v = colorsys.rgb_to_hsv(r, g, b)
     if s == 0.0:
-        # achromatic input: keep it neutral, only enforce the brightness floor
-        v = max(v, min_lum / 255)
+        # achromatic input: keep it neutral, only enforce the brightness bounds
+        v = min(max(v, min_lum / 255), max_lum / 255)
     else:
         s = max(s, min_sat)
-        v = max(v, min_lum / 255)
+        v = min(max(v, min_lum / 255), max_lum / 255)
     r, g, b = colorsys.hsv_to_rgb(h, s, v)
     return tuple(int(round(c * 255)) for c in (r, g, b))
 

@@ -31,3 +31,8 @@ def test_vertical_gradient_top_and_bottom():
 def test_clamp_color_grey_stays_grey():
     r, g, b = clamp_color((128, 128, 128))
     assert abs(r - g) <= 5 and abs(g - b) <= 5
+
+
+def test_clamp_color_caps_near_white():
+    r, g, b = clamp_color((255, 255, 255))
+    assert max(r, g, b) <= 215  # never near-white
