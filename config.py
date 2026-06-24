@@ -23,6 +23,11 @@ REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback
 #   user-top-read             -> top tracks/artists (used in later phases)
 SCOPES = "user-read-recently-played user-top-read"
 
+# --- Last.fm credentials ---
+LASTFM_API_KEY = os.getenv("LAST_FM_API_KEY")
+LASTFM_SHARED_SECRET = os.getenv("LAST_FM_SHARED_SECRET")
+LASTFM_EXPORT_PATH = os.getenv("LASTFM_EXPORT_PATH")
+
 # --- Local file paths ---
 DATA_DIR = PROJECT_ROOT / "data"
 DB_PATH = DATA_DIR / "plays.db"
@@ -53,3 +58,16 @@ def assert_credentials() -> None:
             + "\nCopy .env.example to .env and fill in your values "
             "(see README.md, Phase 0)."
         )
+
+
+def resolve_export_path() -> Path:
+    """Path to the Last.fm export: env override, else newest data/scrobbles-*.xml."""
+    if LASTFM_EXPORT_PATH:
+        return Path(LASTFM_EXPORT_PATH)
+    matches = sorted(DATA_DIR.glob("scrobbles-*.xml"))
+    if not matches:
+        raise SystemExit(
+            "No Last.fm export found. Put it at data/scrobbles-*.xml or set "
+            "LASTFM_EXPORT_PATH in .env."
+        )
+    return matches[-1]
