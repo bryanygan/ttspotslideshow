@@ -252,3 +252,60 @@ def canonical_plays(conn: sqlite3.Connection, window_seconds: int = 120) -> list
              "index": len(result) - 1}
         )
     return result
+
+
+def distinct_artist_names(conn: sqlite3.Connection) -> list:
+    """Distinct non-empty artist display names across all plays."""
+    rows = conn.execute(
+        "SELECT DISTINCT artist FROM plays WHERE artist <> '' ORDER BY artist"
+    ).fetchall()
+    return [r["artist"] for r in rows]
+
+
+def upsert_artist_genre(
+    conn: sqlite3.Connection,
+    *,
+    artist_key: str,
+    display_name: str,
+    spotify_artist_id: str,
+    raw_genres: str,
+    lastfm_tags: str,
+    primary_bucket: str,
+    genre_source: str,
+    fetched_at: str,
+) -> None:
+    """Insert/replace one artist's resolved genre record."""
+    conn.execute(
+        """
+        INSERT INTO artist_genres
+            (artist_key, display_name, spotify_artist_id, raw_genres,
+             lastfm_tags, primary_bucket, genre_source, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(artist_key) DO UPDATE SET
+            display_name=excluded.display_name,
+            spotify_artist_id=excluded.spotify_artist_id,
+            raw_genres=excluded.raw_genres,
+            lastfm_tags=excluded.lastfm_tags,
+            primary_bucket=excluded.primary_bucket,
+            genre_source=excluded.genre_source,
+            fetched_at=excluded.fetched_at
+        """,
+        (artist_key, display_name, spotify_artist_id, raw_genres,
+         lastfm_tags, primary_bucket, genre_source, fetched_at),
+    )
+
+
+def get_artist_genre(conn: sqlite3.Connection, artist_key: str):
+    """Return the cached artist_genres row, or None."""
+    return conn.execute(
+        "SELECT * FROM artist_genres WHERE artist_key = ?", (artist_key,)
+    ).fetchone()
+
+
+def bucket_distribution(conn: sqlite3.Connection) -> dict:
+    """Return {primary_bucket: artist_count} from artist_genres."""
+    rows = conn.execute(
+        "SELECT primary_bucket, COUNT(*) AS c FROM artist_genres "
+        "GROUP BY primary_bucket ORDER BY c DESC"
+    ).fetchall()
+    return {r["primary_bucket"]: r["c"] for r in rows}
