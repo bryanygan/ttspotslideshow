@@ -9,35 +9,89 @@ Two tables:
 
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Iterator, Optional
 
 from config import DB_PATH, ensure_dirs
 
-SCHEMA = """
+CREATE_PLAYS = """
 CREATE TABLE IF NOT EXISTS plays (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    track_id      TEXT    NOT NULL,
-    name          TEXT    NOT NULL,
-    artist        TEXT    NOT NULL,
-    artist_id     TEXT,
-    artist_genre  TEXT,            -- primary genre (best-effort), 'unknown' if none
-    album_art_url TEXT,
-    popularity    INTEGER,         -- kept for schema stability; Spotify removed
-                                   -- this field from the API in Feb 2026, so it
-                                   -- will be NULL going forward.
-    played_at     TEXT    NOT NULL,-- ISO-8601 timestamp from Spotify (UTC)
-    UNIQUE(track_id, played_at)    -- dedupe: the same play can't be logged twice
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id       TEXT    NOT NULL DEFAULT '',
+    name           TEXT    NOT NULL,
+    artist         TEXT    NOT NULL,
+    artist_id      TEXT,
+    artist_genre   TEXT,
+    album_art_url  TEXT,
+    popularity     INTEGER,
+    played_at      TEXT    NOT NULL,
+    source         TEXT    NOT NULL DEFAULT 'spotify',
+    played_at_unix INTEGER,
+    UNIQUE(source, artist, track_id, name, played_at)
 );
+"""
 
+CREATE_ARTIST_GENRES = """
+CREATE TABLE IF NOT EXISTS artist_genres (
+    artist_key        TEXT PRIMARY KEY,
+    display_name      TEXT,
+    spotify_artist_id TEXT,
+    raw_genres        TEXT,
+    lastfm_tags       TEXT,
+    primary_bucket    TEXT NOT NULL,
+    genre_source      TEXT NOT NULL,
+    fetched_at        TEXT
+);
+"""
+
+CREATE_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
+CREATE INDEX IF NOT EXISTS idx_plays_unix ON plays(played_at_unix);
+"""
+
+# Legacy: keep artists table for backward compat (existing tests may reference it)
+CREATE_ARTISTS = """
 CREATE TABLE IF NOT EXISTS artists (
     artist_id  TEXT PRIMARY KEY,
     name       TEXT,
     genres     TEXT,   -- comma-separated list, '' if the artist has none
     fetched_at TEXT
 );
-
-CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
 """
+
+
+def _iso_to_unix(iso: str) -> int:
+    """ISO-8601 timestamp (may end in 'Z') -> epoch seconds."""
+    return int(datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    """Bring a DB up to the current schema. Idempotent and safe to re-run."""
+    info = conn.execute("PRAGMA table_info(plays)").fetchall()
+    cols = [r[1] for r in info]
+    if not info:
+        conn.execute(CREATE_PLAYS)
+    elif "source" not in cols:
+        # Old schema: rebuild plays with the new columns + UNIQUE, backfilling.
+        conn.execute("ALTER TABLE plays RENAME TO plays_old")
+        conn.execute(CREATE_PLAYS)
+        old_rows = conn.execute(
+            "SELECT track_id, name, artist, artist_id, artist_genre, "
+            "album_art_url, popularity, played_at FROM plays_old"
+        ).fetchall()
+        for r in old_rows:
+            conn.execute(
+                "INSERT OR IGNORE INTO plays "
+                "(track_id, name, artist, artist_id, artist_genre, album_art_url, "
+                " popularity, played_at, source, played_at_unix) "
+                "VALUES (?,?,?,?,?,?,?,?, 'spotify', ?)",
+                (r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7],
+                 _iso_to_unix(r[7])),
+            )
+        conn.execute("DROP TABLE plays_old")
+    conn.execute(CREATE_ARTIST_GENRES)
+    conn.execute(CREATE_ARTISTS)
+    conn.executescript(CREATE_INDEXES)
 
 
 @contextmanager
@@ -54,9 +108,9 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 
 def init_db() -> None:
-    """Create tables/indexes if they don't already exist. Safe to run anytime."""
+    """Create/upgrade tables. Safe to run anytime."""
     with connect() as conn:
-        conn.executescript(SCHEMA)
+        migrate(conn)
 
 
 def latest_played_at() -> Optional[str]:
@@ -86,11 +140,11 @@ def insert_play(
         """
         INSERT OR IGNORE INTO plays
             (track_id, name, artist, artist_id, artist_genre,
-             album_art_url, popularity, played_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             album_art_url, popularity, played_at, source, played_at_unix)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'spotify', ?)
         """,
         (track_id, name, artist, artist_id, artist_genre,
-         album_art_url, popularity, played_at),
+         album_art_url, popularity, played_at, _iso_to_unix(played_at)),
     )
     return cur.rowcount > 0
 
