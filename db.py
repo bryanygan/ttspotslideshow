@@ -341,3 +341,42 @@ def record_featured(conn: sqlite3.Connection, track_keys, run_date: str) -> None
             """,
             (key, run_date),
         )
+
+
+def window_track_candidates(conn: sqlite3.Connection, start_unix: int) -> list:
+    """Aggregate canonical plays since start_unix into unique candidate tracks."""
+    genres = {
+        r["artist_key"]: r["primary_bucket"]
+        for r in conn.execute(
+            "SELECT artist_key, primary_bucket FROM artist_genres"
+        ).fetchall()
+    }
+
+    groups: dict = {}
+    for r in canonical_plays(conn):
+        unix = r["played_at_unix"]
+        if unix is None or unix < start_unix:
+            continue
+        artist_key = normalize(r["artist"])
+        track_key = artist_key + "\t" + normalize(r["name"])
+        g = groups.get(track_key)
+        if g is None:
+            groups[track_key] = g = {
+                "track_key": track_key,
+                "play_count": 0,
+                "track_id": r["track_id"],
+                "title": r["name"],
+                "artist": r["artist"],
+                "album_art_url": r["album_art_url"],
+                "last_played_unix": unix,
+                "primary_bucket": genres.get(artist_key, "unknown"),
+            }
+        g["play_count"] += 1
+        if unix >= g["last_played_unix"]:
+            # Refresh representative fields from the most recent play.
+            g["last_played_unix"] = unix
+            g["track_id"] = r["track_id"]
+            g["title"] = r["name"]
+            g["artist"] = r["artist"]
+            g["album_art_url"] = r["album_art_url"]
+    return list(groups.values())
