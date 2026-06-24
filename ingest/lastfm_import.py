@@ -14,8 +14,18 @@ def _text(elem, tag: str) -> str:
 
 
 def iter_scrobbles(xml_path) -> Iterator[dict]:
-    """Yield one dict per real, dated scrobble. Skips now-playing/malformed."""
-    for _, elem in ET.iterparse(str(xml_path), events=("end",)):
+    """Yield one dict per real, dated scrobble. Skips now-playing/malformed.
+
+    Uses the root-clear idiom: children of the current <track> stay intact during
+    extraction, and the root is cleared after each track so processed (emptied)
+    track shells don't accumulate -> constant memory on the full export.
+    """
+    root = None
+    for event, elem in ET.iterparse(str(xml_path), events=("start", "end")):
+        if event == "start":
+            if root is None:
+                root = elem
+            continue
         if elem.tag != "track":
             continue
         try:
@@ -49,6 +59,8 @@ def iter_scrobbles(xml_path) -> Iterator[dict]:
             }
         finally:
             elem.clear()
+            if root is not None:
+                root.clear()
 
 
 def import_scrobbles(conn, xml_path) -> tuple[int, int]:
