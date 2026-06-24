@@ -9,35 +9,90 @@ Two tables:
 
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Iterator, Optional
 
 from config import DB_PATH, ensure_dirs
+from text_norm import normalize
 
-SCHEMA = """
+CREATE_PLAYS = """
 CREATE TABLE IF NOT EXISTS plays (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    track_id      TEXT    NOT NULL,
-    name          TEXT    NOT NULL,
-    artist        TEXT    NOT NULL,
-    artist_id     TEXT,
-    artist_genre  TEXT,            -- primary genre (best-effort), 'unknown' if none
-    album_art_url TEXT,
-    popularity    INTEGER,         -- kept for schema stability; Spotify removed
-                                   -- this field from the API in Feb 2026, so it
-                                   -- will be NULL going forward.
-    played_at     TEXT    NOT NULL,-- ISO-8601 timestamp from Spotify (UTC)
-    UNIQUE(track_id, played_at)    -- dedupe: the same play can't be logged twice
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id       TEXT    NOT NULL DEFAULT '',
+    name           TEXT    NOT NULL,
+    artist         TEXT    NOT NULL,
+    artist_id      TEXT,
+    artist_genre   TEXT,
+    album_art_url  TEXT,
+    popularity     INTEGER,
+    played_at      TEXT    NOT NULL,
+    source         TEXT    NOT NULL DEFAULT 'spotify',
+    played_at_unix INTEGER,
+    UNIQUE(source, artist, track_id, name, played_at)
 );
+"""
 
+CREATE_ARTIST_GENRES = """
+CREATE TABLE IF NOT EXISTS artist_genres (
+    artist_key        TEXT PRIMARY KEY,
+    display_name      TEXT,
+    spotify_artist_id TEXT,
+    raw_genres        TEXT,
+    lastfm_tags       TEXT,
+    primary_bucket    TEXT NOT NULL,
+    genre_source      TEXT NOT NULL,
+    fetched_at        TEXT
+);
+"""
+
+CREATE_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
+CREATE INDEX IF NOT EXISTS idx_plays_unix ON plays(played_at_unix);
+"""
+
+# Legacy: keep artists table for backward compat (existing tests may reference it)
+CREATE_ARTISTS = """
 CREATE TABLE IF NOT EXISTS artists (
     artist_id  TEXT PRIMARY KEY,
     name       TEXT,
     genres     TEXT,   -- comma-separated list, '' if the artist has none
     fetched_at TEXT
 );
-
-CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
 """
+
+
+def _iso_to_unix(iso: str) -> int:
+    """ISO-8601 timestamp (may end in 'Z') -> epoch seconds."""
+    return int(datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    """Bring a DB up to the current schema. Idempotent and safe to re-run."""
+    info = conn.execute("PRAGMA table_info(plays)").fetchall()
+    cols = [r[1] for r in info]
+    if not info:
+        conn.execute(CREATE_PLAYS)
+    elif "source" not in cols:
+        # Old schema: rebuild plays with the new columns + UNIQUE, backfilling.
+        conn.execute("ALTER TABLE plays RENAME TO plays_old")
+        conn.execute(CREATE_PLAYS)
+        old_rows = conn.execute(
+            "SELECT track_id, name, artist, artist_id, artist_genre, "
+            "album_art_url, popularity, played_at FROM plays_old"
+        ).fetchall()
+        for r in old_rows:
+            conn.execute(
+                "INSERT OR IGNORE INTO plays "
+                "(track_id, name, artist, artist_id, artist_genre, album_art_url, "
+                " popularity, played_at, source, played_at_unix) "
+                "VALUES (?,?,?,?,?,?,?,?, 'spotify', ?)",
+                (r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7],
+                 _iso_to_unix(r[7])),
+            )
+        conn.execute("DROP TABLE plays_old")
+    conn.execute(CREATE_ARTIST_GENRES)
+    conn.execute(CREATE_ARTISTS)
+    conn.executescript(CREATE_INDEXES)
 
 
 @contextmanager
@@ -54,9 +109,9 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 
 def init_db() -> None:
-    """Create tables/indexes if they don't already exist. Safe to run anytime."""
+    """Create/upgrade tables. Safe to run anytime."""
     with connect() as conn:
-        conn.executescript(SCHEMA)
+        migrate(conn)
 
 
 def latest_played_at() -> Optional[str]:
@@ -86,11 +141,11 @@ def insert_play(
         """
         INSERT OR IGNORE INTO plays
             (track_id, name, artist, artist_id, artist_genre,
-             album_art_url, popularity, played_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             album_art_url, popularity, played_at, source, played_at_unix)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'spotify', ?)
         """,
         (track_id, name, artist, artist_id, artist_genre,
-         album_art_url, popularity, played_at),
+         album_art_url, popularity, played_at, _iso_to_unix(played_at)),
     )
     return cur.rowcount > 0
 
@@ -133,3 +188,124 @@ def play_count() -> int:
     """Total number of logged plays (handy for a quick sanity check)."""
     with connect() as conn:
         return conn.execute("SELECT COUNT(*) AS c FROM plays").fetchone()["c"]
+
+
+def insert_lastfm_play(
+    conn: sqlite3.Connection,
+    *,
+    track_id: str,
+    name: str,
+    artist: str,
+    album_art_url: str,
+    played_at: str,
+    played_at_unix: int,
+) -> bool:
+    """Insert one Last.fm scrobble. Returns True if a new row was added."""
+    cur = conn.execute(
+        """
+        INSERT OR IGNORE INTO plays
+            (track_id, name, artist, artist_id, artist_genre, album_art_url,
+             popularity, played_at, source, played_at_unix)
+        VALUES (?, ?, ?, NULL, NULL, ?, NULL, ?, 'lastfm', ?)
+        """,
+        (track_id, name, artist, album_art_url, played_at, played_at_unix),
+    )
+    return cur.rowcount > 0
+
+
+def play_count_by_source(conn: sqlite3.Connection) -> dict:
+    """Return {source: count} over the plays table."""
+    rows = conn.execute(
+        "SELECT source, COUNT(*) AS c FROM plays GROUP BY source"
+    ).fetchall()
+    return {r["source"]: r["c"] for r in rows}
+
+
+def canonical_plays(conn: sqlite3.Connection, window_seconds: int = 120) -> list:
+    """Return plays with cross-source duplicates collapsed (Spotify preferred)."""
+    rows = conn.execute(
+        "SELECT * FROM plays WHERE played_at_unix IS NOT NULL "
+        "ORDER BY played_at_unix ASC"
+    ).fetchall()
+
+    result: list = []
+    recent: list[dict] = []  # kept rows still inside the window
+    for row in rows:
+        unix = row["played_at_unix"]
+        key = (normalize(row["artist"]), normalize(row["name"]))
+        recent = [r for r in recent if unix - r["unix"] <= window_seconds]
+
+        twin = next(
+            (r for r in recent if r["key"] == key and r["source"] != row["source"]),
+            None,
+        )
+        if twin is not None:
+            # Cross-source duplicate. Prefer the Spotify row.
+            if row["source"] == "spotify" and twin["source"] == "lastfm":
+                result[twin["index"]] = row
+                twin["source"] = "spotify"
+            continue
+
+        result.append(row)
+        recent.append(
+            {"unix": unix, "key": key, "source": row["source"],
+             "index": len(result) - 1}
+        )
+    return result
+
+
+def distinct_artist_names(conn: sqlite3.Connection) -> list:
+    """Distinct non-empty artist display names across all plays."""
+    rows = conn.execute(
+        "SELECT DISTINCT artist FROM plays WHERE artist <> '' ORDER BY artist"
+    ).fetchall()
+    return [r["artist"] for r in rows]
+
+
+def upsert_artist_genre(
+    conn: sqlite3.Connection,
+    *,
+    artist_key: str,
+    display_name: str,
+    spotify_artist_id: str,
+    raw_genres: str,
+    lastfm_tags: str,
+    primary_bucket: str,
+    genre_source: str,
+    fetched_at: str,
+) -> None:
+    """Insert/replace one artist's resolved genre record."""
+    conn.execute(
+        """
+        INSERT INTO artist_genres
+            (artist_key, display_name, spotify_artist_id, raw_genres,
+             lastfm_tags, primary_bucket, genre_source, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(artist_key) DO UPDATE SET
+            display_name=excluded.display_name,
+            spotify_artist_id=excluded.spotify_artist_id,
+            raw_genres=excluded.raw_genres,
+            lastfm_tags=excluded.lastfm_tags,
+            primary_bucket=excluded.primary_bucket,
+            genre_source=excluded.genre_source,
+            fetched_at=excluded.fetched_at
+        """,
+        (artist_key, display_name, spotify_artist_id, raw_genres,
+         lastfm_tags, primary_bucket, genre_source, fetched_at),
+    )
+
+
+def get_artist_genre(conn: sqlite3.Connection, artist_key: str):
+    """Return the cached artist_genres row, or None."""
+    return conn.execute(
+        "SELECT * FROM artist_genres WHERE artist_key = ?", (artist_key,)
+    ).fetchone()
+
+
+def bucket_distribution(conn: sqlite3.Connection) -> dict:
+    """Return {primary_bucket: artist_count} from artist_genres."""
+    rows = conn.execute(
+        "SELECT primary_bucket, COUNT(*) AS c FROM artist_genres "
+        "GROUP BY primary_bucket ORDER BY c DESC"
+    ).fetchall()
+    return {r["primary_bucket"]: r["c"] for r in rows}
