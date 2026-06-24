@@ -20,3 +20,9 @@ def test_does_not_merge_distinct_titles():
 
 def test_empty_safe():
     assert normalize("") == ""
+
+
+def test_does_not_strip_version_when_more_segments_follow():
+    # "Acoustic Version" here is meaningful, not a remaster tag, because a
+    # further " - Live" segment follows — must NOT be stripped.
+    assert normalize("Song - Acoustic Version - Live") == "song - acoustic version - live"

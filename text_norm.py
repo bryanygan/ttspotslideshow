@@ -9,7 +9,7 @@ import re
 
 _WS = re.compile(r"\s+")
 # Trailing " - <something> remaster" or " - <something> version" (case-insensitive).
-_SUFFIX = re.compile(r"\s*-\s*[^-]*\b(remaster(?:ed)?|version)\b.*$", re.IGNORECASE)
+_SUFFIX = re.compile(r"\s*-\s*[^-]*\b(remaster(?:ed)?|version)\b[^-]*$", re.IGNORECASE)
 
 
 def normalize(text: str) -> str:
