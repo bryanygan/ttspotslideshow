@@ -45,28 +45,51 @@ def resolve_artist_genre(name, spotify_client, lastfm_api_key, fetch=None) -> di
     return result
 
 
-def enrich_all(conn, spotify_client, lastfm_api_key, fetch=None, sleep=None) -> dict:
-    """Enrich every not-yet-cached artist. Returns a per-source summary."""
+def enrich_all(conn, spotify_client, lastfm_api_key, fetch=None, sleep=None,
+               commit_every=50, progress=None) -> dict:
+    """Enrich every not-yet-cached artist. Returns a per-source summary.
+
+    Commits every `commit_every` new enrichments so progress is persisted and the
+    run is resumable: if it's interrupted (network hang, rate limit, Ctrl-C), a
+    re-run skips the already-cached artists and continues. `progress(done, total)`
+    is called periodically if provided.
+    """
     summary = {"spotify": 0, "lastfm": 0, "none": 0, "skipped": 0}
-    for name in db.distinct_artist_names(conn):
+    names = db.distinct_artist_names(conn)
+    total = len(names)
+    since_commit = 0
+
+    for idx, name in enumerate(names, start=1):
         key = normalize(name)
         if db.get_artist_genre(conn, key) is not None:
             summary["skipped"] += 1
-            continue
+        else:
+            resolved = resolve_artist_genre(
+                name, spotify_client, lastfm_api_key, fetch=fetch
+            )
+            db.upsert_artist_genre(
+                conn,
+                artist_key=key,
+                display_name=resolved["display_name"],
+                spotify_artist_id=resolved["spotify_artist_id"],
+                raw_genres=",".join(resolved["raw_genres"]),
+                lastfm_tags=",".join(resolved["lastfm_tags"]),
+                primary_bucket=resolved["primary_bucket"],
+                genre_source=resolved["genre_source"],
+                fetched_at=datetime.now(timezone.utc).isoformat(),
+            )
+            summary[resolved["genre_source"]] += 1
+            since_commit += 1
+            if resolved["genre_source"] == "lastfm" and sleep is not None:
+                sleep(0.25)  # be polite to the Last.fm API
+            if since_commit >= commit_every:
+                conn.commit()
+                since_commit = 0
 
-        resolved = resolve_artist_genre(name, spotify_client, lastfm_api_key, fetch=fetch)
-        db.upsert_artist_genre(
-            conn,
-            artist_key=key,
-            display_name=resolved["display_name"],
-            spotify_artist_id=resolved["spotify_artist_id"],
-            raw_genres=",".join(resolved["raw_genres"]),
-            lastfm_tags=",".join(resolved["lastfm_tags"]),
-            primary_bucket=resolved["primary_bucket"],
-            genre_source=resolved["genre_source"],
-            fetched_at=datetime.now(timezone.utc).isoformat(),
-        )
-        summary[resolved["genre_source"]] += 1
-        if resolved["genre_source"] == "lastfm" and sleep is not None:
-            sleep(0.25)  # be polite to the Last.fm API
+        if progress is not None and idx % commit_every == 0:
+            progress(idx, total)
+
+    conn.commit()
+    if progress is not None:
+        progress(total, total)
     return summary

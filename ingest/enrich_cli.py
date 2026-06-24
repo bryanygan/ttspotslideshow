@@ -10,11 +10,16 @@ from ingest.genres import enrich_all
 from spotify_client import get_client
 
 
-def run_ingest(conn, xml_path, spotify_client, lastfm_api_key, fetch=None, sleep=None) -> dict:
+def run_ingest(conn, xml_path, spotify_client, lastfm_api_key, fetch=None,
+               sleep=None, progress=None) -> dict:
     """Migrate, import, and enrich against an open connection. Returns a summary."""
     db.migrate(conn)
     imported, skipped = import_scrobbles(conn, xml_path)
-    enriched = enrich_all(conn, spotify_client, lastfm_api_key, fetch=fetch, sleep=sleep)
+    conn.commit()  # persist the import before the long (resumable) enrichment
+    enriched = enrich_all(
+        conn, spotify_client, lastfm_api_key, fetch=fetch, sleep=sleep,
+        progress=progress,
+    )
     return {
         "imported": imported,
         "skipped": skipped,
@@ -32,10 +37,16 @@ def main() -> None:
         print("Warning: LAST_FM_API_KEY not set — genre fallback disabled.")
 
     import time
+
+    def progress(done, total):
+        print(f"  enriching artists: {done}/{total}", flush=True)
+
+    print("Importing scrobbles + enriching artist genres "
+          "(resumable — safe to re-run if interrupted)...", flush=True)
     with db.connect() as conn:
         summary = run_ingest(
             conn, xml_path, get_client(), config.LASTFM_API_KEY,
-            sleep=time.sleep,
+            sleep=time.sleep, progress=progress,
         )
 
     print(f"Imported {summary['imported']} scrobbles "

@@ -22,4 +22,12 @@ def get_client() -> spotipy.Spotify:
         cache_path=str(config.TOKEN_CACHE_PATH),
         open_browser=True,
     )
-    return spotipy.Spotify(auth_manager=auth_manager)
+    # requests_timeout caps each HTTP call so a hung/slow connection can't stall
+    # the whole enrichment batch indefinitely; retries handle transient errors.
+    return spotipy.Spotify(
+        auth_manager=auth_manager,
+        requests_timeout=10,
+        retries=3,
+        status_retries=3,
+        backoff_factor=0.3,
+    )
