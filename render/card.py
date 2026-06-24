@@ -67,10 +67,23 @@ def render_card(track: dict, art_path=None) -> Image.Image:
         draw.rounded_rectangle(
             [PAD, ART_Y, PAD + ART, ART_Y + ART], ART_RADIUS, fill=(60, 60, 60)
         )
-        note_font = load_font("bold", 180)
-        draw.text(
-            (PAD + ART / 2, ART_Y + ART / 2), "♪",
-            font=note_font, fill=(150, 150, 150), anchor="mm",
+        # Music-note placeholder drawn with primitives (no font glyph needed).
+        note_color = (150, 150, 150)
+        cx = PAD + ART / 2
+        cy = ART_Y + ART / 2
+        head_w, head_h = 90, 70
+        head_cx = cx - 15
+        head_cy = cy + 70
+        draw.ellipse(
+            [head_cx - head_w / 2, head_cy - head_h / 2,
+             head_cx + head_w / 2, head_cy + head_h / 2],
+            fill=note_color,
+        )
+        stem_x = head_cx + head_w / 2 - 14
+        draw.rectangle([stem_x, cy - 120, stem_x + 16, head_cy], fill=note_color)
+        draw.polygon(
+            [(stem_x + 16, cy - 120), (stem_x + 72, cy - 78), (stem_x + 16, cy - 36)],
+            fill=note_color,
         )
 
     # Title + artist.
