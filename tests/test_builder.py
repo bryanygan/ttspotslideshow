@@ -103,8 +103,45 @@ def test_build_recap_slideshow(tmp_path, monkeypatch):
     assert Image.open(slide).size == (1080, 1920)
     history = db.featured_history(conn)
     assert len(history) == 4
+    # The featured date must be a plain ISO date (the "recap-" prefix is only the
+    # output folder name) so the selector's novelty parsing doesn't crash later.
     for t in tracks:
-        assert history[t["track_key"]] == "recap-2026-06-25"
+        assert history[t["track_key"]] == "2026-06-25"
+
+
+def test_recap_featured_does_not_break_later_select(tmp_path, monkeypatch):
+    # Regression: a recap run must leave featured_tracks in a state the regular
+    # selector can read (date.fromisoformat) without raising.
+    conn = _conn()
+    tracks = [
+        {
+            "track_key": f"artist{i}\tsong{i}",
+            "track_id": f"id{i}",
+            "title": f"Song{i}",
+            "artist": f"Artist{i}",
+            "album_art_url": "https://lastfm/300.jpg",
+            "primary_bucket": "pop",
+        }
+        for i in range(4)
+    ]
+    monkeypatch.setattr(
+        rart, "_default_fetch",
+        lambda url, dest: Image.new("RGB", (300, 300), (90, 90, 90)).save(dest),
+    )
+    from slideshow.builder import build_recap_slideshow
+    build_recap_slideshow(
+        conn, out_root=tmp_path / "out", tracks=tracks, today="2026-06-25",
+        fetch=lambda url: '{"results": []}', cache_dir=tmp_path / "art",
+    )
+
+    # A later regular selection over a candidate featured by the recap must not raise.
+    from slideshow.selector import select_tracks
+    candidates = [{
+        "track_key": "artist0\tsong0", "play_count": 3, "last_played_unix": 1000,
+        "primary_bucket": "pop", "title": "Song0", "artist": "Artist0",
+        "album_art_url": "",
+    }]
+    select_tracks(candidates, db.featured_history(conn), "2026-06-27")
 
 
 def test_disperse_tracks():
