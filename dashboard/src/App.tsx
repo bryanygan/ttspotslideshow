@@ -21,6 +21,7 @@ function App() {
   const [sortBy, setSortBy] = useState<'plays' | 'underrated'>('plays');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [quickSelectCount, setQuickSelectCount] = useState<number>(16);
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,11 +86,123 @@ function App() {
     setSuccessSummary(null);
   };
 
-  const handleQuickSelect = (count: number) => {
+  const handleSelectTopPlayed = () => {
+    const sortedByPlays = [...candidates].sort((a, b) => b.play_count - a.play_count || b.last_played_unix - a.last_played_unix);
     const next = new Set<string>();
-    const limit = Math.min(count, sortedList.length);
+    const limit = Math.min(quickSelectCount, sortedByPlays.length);
     for (let i = 0; i < limit; i++) {
-      next.add(sortedList[i].track_key);
+      next.add(sortedByPlays[i].track_key);
+    }
+    setSelectedKeys(next);
+    setSuccessSummary(null);
+  };
+
+  const handleSelectMostRecent = () => {
+    const sortedByRecent = [...candidates].sort((a, b) => b.last_played_unix - a.last_played_unix);
+    const next = new Set<string>();
+    const limit = Math.min(quickSelectCount, sortedByRecent.length);
+    for (let i = 0; i < limit; i++) {
+      next.add(sortedByRecent[i].track_key);
+    }
+    setSelectedKeys(next);
+    setSuccessSummary(null);
+  };
+
+  const handleSelectUnderrated = () => {
+    const sortedByUnderrated = [...candidates].sort((a, b) => {
+      const scoreA = a.play_count / (a.popularity || 1);
+      const scoreB = b.play_count / (b.popularity || 1);
+      return scoreB - scoreA || b.last_played_unix - a.last_played_unix;
+    });
+    const next = new Set<string>();
+    const limit = Math.min(quickSelectCount, sortedByUnderrated.length);
+    for (let i = 0; i < limit; i++) {
+      next.add(sortedByUnderrated[i].track_key);
+    }
+    setSelectedKeys(next);
+    setSuccessSummary(null);
+  };
+
+  const handleSelectRandom = () => {
+    const shuffled = [...candidates].sort(() => 0.5 - Math.random());
+    const next = new Set<string>();
+    const limit = Math.min(quickSelectCount, shuffled.length);
+    for (let i = 0; i < limit; i++) {
+      next.add(shuffled[i].track_key);
+    }
+    setSelectedKeys(next);
+    setSuccessSummary(null);
+  };
+
+  const handleSelectSameArtist = () => {
+    const artistPlays: Record<string, number> = {};
+    candidates.forEach(c => {
+      artistPlays[c.artist] = (artistPlays[c.artist] || 0) + c.play_count;
+    });
+    const topArtist = Object.keys(artistPlays).sort((a, b) => artistPlays[b] - artistPlays[a])[0];
+    if (!topArtist) return;
+
+    const artistTracks = candidates
+      .filter(c => c.artist === topArtist)
+      .sort((a, b) => b.play_count - a.play_count || b.last_played_unix - a.last_played_unix);
+
+    const next = new Set<string>();
+    const limit = Math.min(quickSelectCount, artistTracks.length);
+    for (let i = 0; i < limit; i++) {
+      next.add(artistTracks[i].track_key);
+    }
+
+    if (next.size < quickSelectCount) {
+      const nextArtists = Object.keys(artistPlays)
+        .sort((a, b) => artistPlays[b] - artistPlays[a])
+        .slice(1);
+      for (const otherArtist of nextArtists) {
+        if (next.size >= quickSelectCount) break;
+        const otherTracks = candidates
+          .filter(c => c.artist === otherArtist)
+          .sort((a, b) => b.play_count - a.play_count);
+        for (const t of otherTracks) {
+          if (next.size >= quickSelectCount) break;
+          next.add(t.track_key);
+        }
+      }
+    }
+    setSelectedKeys(next);
+    setSuccessSummary(null);
+  };
+
+  const handleSelectSameGenre = () => {
+    const genrePlays: Record<string, number> = {};
+    candidates.forEach(c => {
+      genrePlays[c.primary_bucket] = (genrePlays[c.primary_bucket] || 0) + c.play_count;
+    });
+    const topGenre = Object.keys(genrePlays).sort((a, b) => genrePlays[b] - genrePlays[a])[0];
+    if (!topGenre) return;
+
+    const genreTracks = candidates
+      .filter(c => c.primary_bucket === topGenre)
+      .sort((a, b) => b.play_count - a.play_count || b.last_played_unix - a.last_played_unix);
+
+    const next = new Set<string>();
+    const limit = Math.min(quickSelectCount, genreTracks.length);
+    for (let i = 0; i < limit; i++) {
+      next.add(genreTracks[i].track_key);
+    }
+
+    if (next.size < quickSelectCount) {
+      const nextGenres = Object.keys(genrePlays)
+        .sort((a, b) => genrePlays[b] - genrePlays[a])
+        .slice(1);
+      for (const otherGenre of nextGenres) {
+        if (next.size >= quickSelectCount) break;
+        const otherTracks = candidates
+          .filter(c => c.primary_bucket === otherGenre)
+          .sort((a, b) => b.play_count - a.play_count);
+        for (const t of otherTracks) {
+          if (next.size >= quickSelectCount) break;
+          next.add(t.track_key);
+        }
+      }
     }
     setSelectedKeys(next);
     setSuccessSummary(null);
@@ -294,24 +407,91 @@ function App() {
             </div>
 
             {/* Quick Selection */}
-            <div className="flex flex-col gap-2">
-              <label className="text-sm text-gray-400 font-semibold">
-                Quick Select
-              </label>
-              <div className="grid grid-cols-4 gap-2">
-                {[4, 8, 12, 16].map(num => (
-                  <button
-                    key={num}
-                    onClick={() => handleQuickSelect(num)}
-                    className="py-2 px-1 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold text-xs transition-colors"
-                  >
-                    Top {num}
-                  </button>
-                ))}
+            <div className="flex flex-col gap-4 border-t border-gray-800 pt-4">
+              <h3 className="text-[11px] text-gray-500 uppercase tracking-wider font-bold">
+                Smart Selection Presets
+              </h3>
+
+              {/* Count Selector */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-400 font-semibold">Target Size:</span>
+                  <span className="text-purple-400 font-bold">{quickSelectCount} tracks</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  {[4, 8, 12, 16].map(num => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setQuickSelectCount(num)}
+                      className={`py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        quickSelectCount === num
+                          ? 'bg-purple-900/40 border-purple-500 text-purple-300'
+                          : 'bg-gray-900 border-gray-850 text-gray-400 hover:bg-gray-800'
+                      }`}
+                    >
+                      {num}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {/* Preset Buttons Grid */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleSelectTopPlayed}
+                  className="py-2.5 px-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold text-[11px] transition-colors flex items-center justify-center text-center gap-1 border border-gray-750"
+                  title="Selects top tracks by play count"
+                >
+                  🔥 Top Played
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSelectMostRecent}
+                  className="py-2.5 px-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold text-[11px] transition-colors flex items-center justify-center text-center gap-1 border border-gray-750"
+                  title="Selects the most recently played tracks"
+                >
+                  ⏱️ Fresh Hits
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSelectSameArtist}
+                  className="py-2.5 px-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold text-[11px] transition-colors flex items-center justify-center text-center gap-1 border border-gray-750"
+                  title="Selects tracks from your single most-played artist"
+                >
+                  🎤 Artist Vibe
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSelectSameGenre}
+                  className="py-2.5 px-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold text-[11px] transition-colors flex items-center justify-center text-center gap-1 border border-gray-750"
+                  title="Selects tracks from your single most-played genre"
+                >
+                  💿 Genre Vibe
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSelectUnderrated}
+                  className="py-2.5 px-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold text-[11px] transition-colors flex items-center justify-center text-center gap-1 border border-gray-750"
+                  title="Selects high plays / low popularity tracks"
+                >
+                  💎 Underrated
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSelectRandom}
+                  className="py-2.5 px-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold text-[11px] transition-colors flex items-center justify-center text-center gap-1 border border-gray-750"
+                  title="Selects random tracks from the pool"
+                >
+                  🔀 Random Mix
+                </button>
+              </div>
+
               <button
+                type="button"
                 onClick={handleClearSelection}
-                className="mt-1 py-2 w-full text-center rounded-xl border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 font-medium text-xs transition-colors"
+                className="py-2 w-full text-center rounded-xl border border-gray-750 text-gray-400 hover:text-white hover:border-gray-500 font-bold text-xs transition-colors"
               >
                 Clear Selection
               </button>
