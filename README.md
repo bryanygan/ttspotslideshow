@@ -277,6 +277,43 @@ This task incrementally upgrades artists in your database from Last.fm tags to r
 
 ---
 
+## Phase 5 — Weekly Recap Dashboard (Web UI)
+
+The weekly recap dashboard is a React + TypeScript + Tailwind CSS web application served by a lightweight Python backend server (`dashboard_server.py`). It enables you to:
+- Browse track candidates from the last 7, 14, or 30 days.
+- Sort them by **Play Count** or **Underrated Score** (clamping high personal plays against low Spotify global popularity).
+- Review historical selection details (e.g. if the track was featured recently).
+- Manually check/select tracks (target 4, 8, 12, 16) and generate compilation slide collages.
+
+### 1. Build and Run the Dashboard
+
+First, build the frontend client bundle:
+```powershell
+cd dashboard
+npm run build
+cd ..
+```
+
+Then, launch the Python server from the root of the repository:
+```powershell
+python dashboard_server.py
+```
+
+Open your browser and navigate to **[http://localhost:8000/](http://localhost:8000/)**.
+
+### 2. Run in Development Mode (Optional)
+
+If you'd like to run live development hot-reloading for the dashboard UI:
+1. Start the backend server: `python dashboard_server.py`
+2. Start the Vite React development server:
+   ```powershell
+   cd dashboard
+   npm run dev
+   ```
+3. Open **[http://localhost:5173/](http://localhost:5173/)** (which will automatically query the backend server on port 8000).
+
+---
+
 ## Rendering cards directly (Phase 2 demo)
 
 Render a sample 2×2 slide from a few real tracks (downloads their album art):

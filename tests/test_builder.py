@@ -68,3 +68,40 @@ def test_build_with_no_plays_writes_nothing(tmp_path):
     assert summary["track_count"] == 0
     assert summary["slide_count"] == 0
     assert not (tmp_path / "out" / "2026-06-24").exists()
+
+
+def test_build_recap_slideshow(tmp_path, monkeypatch):
+    conn = _conn()
+    tracks = [
+        {
+            "track_key": f"artist{i}\tsong{i}",
+            "track_id": f"id{i}",
+            "title": f"Song{i}",
+            "artist": f"Artist{i}",
+            "album_art_url": "https://lastfm/300.jpg",
+            "primary_bucket": "pop" if i % 2 == 0 else "hip-hop",
+        }
+        for i in range(4)
+    ]
+
+    monkeypatch.setattr(
+        rart, "_default_fetch",
+        lambda url, dest: Image.new("RGB", (300, 300), (90, 90, 90)).save(dest),
+    )
+
+    from slideshow.builder import build_recap_slideshow
+    summary = build_recap_slideshow(
+        conn, out_root=tmp_path / "out", tracks=tracks,
+        today="2026-06-25", fetch=lambda url: '{"results": []}', cache_dir=tmp_path / "art",
+    )
+
+    assert summary["slide_count"] == 1
+    assert summary["track_count"] == 4
+    assert summary["genre_spread"] == {"pop": 2, "hip-hop": 2}
+    slide = tmp_path / "out" / "recap-2026-06-25" / "slide_1.png"
+    assert slide.exists()
+    assert Image.open(slide).size == (1080, 1920)
+    history = db.featured_history(conn)
+    assert len(history) == 4
+    for t in tracks:
+        assert history[t["track_key"]] == "recap-2026-06-25"

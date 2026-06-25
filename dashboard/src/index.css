@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+/* Custom premium aesthetic additions */
+@layer base {
+  body {
+    background-color: #0f1115;
+    color: #f3f4f6;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
