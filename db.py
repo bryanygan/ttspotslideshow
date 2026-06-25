@@ -242,12 +242,28 @@ def play_count_by_source(conn: sqlite3.Connection) -> dict:
     return {r["source"]: r["c"] for r in rows}
 
 
-def canonical_plays(conn: sqlite3.Connection, window_seconds: int = 120) -> list:
-    """Return plays with cross-source duplicates collapsed (Spotify preferred)."""
-    rows = conn.execute(
-        "SELECT * FROM plays WHERE played_at_unix IS NOT NULL "
-        "ORDER BY played_at_unix ASC"
-    ).fetchall()
+def canonical_plays(conn: sqlite3.Connection, window_seconds: int = 120,
+                    since_unix: Optional[int] = None) -> list:
+    """Return plays with cross-source duplicates collapsed (Spotify preferred).
+
+    When ``since_unix`` is given, only plays at/after it are returned, and the
+    query is pre-filtered to ``>= since_unix - window_seconds``. The small
+    look-back keeps cross-source dedup correct at the boundary: a kept play >=
+    since_unix can only have a twin within ``window_seconds`` before it, which the
+    buffer includes. This avoids scanning the whole (large) table for a recent
+    window — the bottleneck for slideshow selection.
+    """
+    if since_unix is not None:
+        rows = conn.execute(
+            "SELECT * FROM plays WHERE played_at_unix IS NOT NULL "
+            "AND played_at_unix >= ? ORDER BY played_at_unix ASC",
+            (since_unix - window_seconds,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM plays WHERE played_at_unix IS NOT NULL "
+            "ORDER BY played_at_unix ASC"
+        ).fetchall()
 
     result: list = []
     recent: list[dict] = []  # kept rows still inside the window
@@ -272,6 +288,11 @@ def canonical_plays(conn: sqlite3.Connection, window_seconds: int = 120) -> list
             {"unix": unix, "key": key, "source": row["source"],
              "index": len(result) - 1}
         )
+
+    # The look-back buffer rows (before since_unix) only exist to make boundary
+    # dedup correct; drop them so the contract is "canonical plays at/after since".
+    if since_unix is not None:
+        result = [r for r in result if r["played_at_unix"] >= since_unix]
     return result
 
 
@@ -366,10 +387,8 @@ def window_track_candidates(conn: sqlite3.Connection, start_unix: int) -> list:
     }
 
     groups: dict = {}
-    for r in canonical_plays(conn):
+    for r in canonical_plays(conn, since_unix=start_unix):
         unix = r["played_at_unix"]
-        if unix is None or unix < start_unix:
-            continue
         artist_key = normalize(r["artist"])
         track_key = artist_key + "\t" + normalize(r["name"])
         g = groups.get(track_key)
