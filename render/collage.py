@@ -16,6 +16,6 @@ def collage(cards: list[Image.Image]) -> Image.Image:
     positions = [(0, 0), (CARD_W, 0), (0, CARD_H), (CARD_W, CARD_H)]
     for card, pos in zip(cards, positions):
         if card.size != (CARD_W, CARD_H):
-            card = card.resize((CARD_W, CARD_H))
+            card = card.resize((CARD_W, CARD_H), resample=Image.LANCZOS)
         slide.paste(card, pos)
     return slide

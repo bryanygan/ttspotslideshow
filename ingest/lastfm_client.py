@@ -41,8 +41,15 @@ def get_top_tags(
     if "error" in payload:
         return []
     tags = payload.get("toptags", {}).get("tag", [])
-    return [
-        t["name"].strip().lower()
-        for t in tags
-        if int(t.get("count", 0)) >= min_weight and t.get("name")
-    ]
+    result = []
+    for t in tags:
+        name = t.get("name")
+        if not name:
+            continue
+        try:
+            weight = int(t.get("count", 0))
+        except (TypeError, ValueError):
+            weight = 0  # Last.fm always returns ints, but never trust the wire
+        if weight >= min_weight:
+            result.append(name.strip().lower())
+    return result

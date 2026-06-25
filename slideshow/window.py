@@ -14,7 +14,7 @@ def resolve_window(conn, target=16, floor=12, steps=(2, 4, 7, 14, 30), now_unix=
         now_unix = int(time.time())
 
     candidates: list = []
-    days_used = steps[-1]
+    days_used = steps[-1] if steps else 0
     for days in steps:
         start = now_unix - days * DAY_SECONDS
         candidates = db.window_track_candidates(conn, start)

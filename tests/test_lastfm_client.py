@@ -44,3 +44,12 @@ def test_handles_error_payload():
     err = json.dumps({"error": 6, "message": "not found"})
     tags = get_top_tags("X", "KEY", fetch=lambda url: err)
     assert tags == []
+
+
+def test_non_numeric_count_does_not_raise():
+    fake = json.dumps({"toptags": {"tag": [
+        {"name": "trap", "count": "lots"},   # bogus count -> treated as 0
+        {"name": "rap", "count": 50},
+    ]}})
+    tags = get_top_tags("X", "KEY", fetch=lambda url: fake, min_weight=10)
+    assert tags == ["rap"]  # 'trap' dropped (weight 0), no exception

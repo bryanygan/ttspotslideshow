@@ -18,7 +18,13 @@ def _novelty(track_key, featured, run_date):
 
 
 def select_tracks(candidates, featured, run_date, target=16, floor=12):
-    """Return an ordered selection (slide order) via genre round-robin."""
+    """Return an ordered selection (slide order) via genre round-robin.
+
+    `floor` is accepted for caller symmetry but intentionally not applied as a hard
+    cutoff: the result is always trimmed to a multiple of 4 (whole slides), and the
+    `(n // 4) * 4` tiers below already reproduce the floor behaviour without ever
+    yielding a non-multiple-of-4 count.
+    """
     if not candidates:
         return []
 

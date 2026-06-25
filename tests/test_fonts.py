@@ -1,9 +1,16 @@
+import pytest
+
 from render.fonts import load_font, truncate_to_width
 
 
 def test_load_font_returns_usable_font():
     font = load_font("bold", 36)
     assert font.getlength("hello") > 0
+
+
+def test_load_font_rejects_unknown_weight():
+    with pytest.raises(ValueError):
+        load_font("ultrablack", 24)
 
 
 def test_load_font_is_cached():

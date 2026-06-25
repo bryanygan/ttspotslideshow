@@ -16,6 +16,10 @@ _cache: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
 
 def load_font(weight: str, size: int) -> ImageFont.FreeTypeFont:
     """Return a cached Montserrat font for the given weight and size."""
+    if weight not in FONT_FILES:
+        raise ValueError(
+            f"unknown font weight {weight!r}; expected one of {sorted(FONT_FILES)}"
+        )
     key = (weight, size)
     if key not in _cache:
         _cache[key] = ImageFont.truetype(str(FONT_DIR / FONT_FILES[weight]), size)
