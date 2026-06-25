@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from pathlib import Path
 from urllib.parse import urlparse
 import pytest
 import dashboard_server
@@ -15,15 +16,28 @@ class FakeWfile:
         self.content += data
 
 
+class FakeRfile:
+
+    def __init__(self, data: bytes):
+        self.data = data
+
+    def read(self, n):
+        return self.data[:n]
+
+
 class DummyHandler(dashboard_server.DashboardHandler):
 
-    def __init__(self):
-        self.headers = {}
+    def __init__(self, body: bytes = b""):
+        self.headers = {"Content-Length": str(len(body))}
+        self.rfile = FakeRfile(body)
         self.wfile = FakeWfile()
         self.response = None
         self.response_headers = []
 
     def send_response(self, code, message=None):
+        self.response = code
+
+    def send_error(self, code, message=None):
         self.response = code
 
     def send_header(self, keyword, value):
@@ -73,3 +87,54 @@ def test_static_file_serving():
     handler.handle_static_files(parsed)
     assert handler.response == 200
     assert b"html" in handler.wfile.content.lower()
+
+
+def test_generate_returns_slide_urls(monkeypatch):
+    # Stub the heavy render; assert the response exposes downloadable slide URLs.
+    def fake_build(conn, out_root, tracks, **kw):
+        return {
+            "date": "2026-06-25", "track_count": 8, "slide_count": 2,
+            "genre_spread": {}, "out_dir": str(Path("output") / "slides" / "recap-2026-06-25"),
+        }
+    monkeypatch.setattr(dashboard_server, "build_recap_slideshow", fake_build)
+
+    from contextlib import contextmanager
+    @contextmanager
+    def fake_connect():
+        yield None
+    monkeypatch.setattr(db, "connect", fake_connect)
+
+    body = json.dumps({"tracks": [{"track_key": "a\tb"}]}).encode("utf-8")
+    handler = DummyHandler(body=body)
+    handler.handle_post_generate()
+
+    assert handler.response == 200
+    res = json.loads(handler.wfile.content.decode("utf-8"))
+    assert res["slides"] == [
+        "/api/slides/recap-2026-06-25/slide_1.png",
+        "/api/slides/recap-2026-06-25/slide_2.png",
+    ]
+
+
+def test_get_slide_serves_png(monkeypatch, tmp_path):
+    slides = tmp_path / "output" / "slides" / "recap-x"
+    slides.mkdir(parents=True)
+    (slides / "slide_1.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    monkeypatch.chdir(tmp_path)
+
+    handler = DummyHandler()
+    handler.handle_get_slide(urlparse("http://x/api/slides/recap-x/slide_1.png"))
+
+    assert handler.response == 200
+    assert handler.wfile.content == b"\x89PNG\r\n\x1a\nfake"
+
+
+def test_get_slide_rejects_path_traversal(monkeypatch, tmp_path):
+    (tmp_path / "output" / "slides").mkdir(parents=True)
+    (tmp_path / "secret.txt").write_text("nope", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    handler = DummyHandler()
+    handler.handle_get_slide(urlparse("http://x/api/slides/../../secret.txt"))
+
+    assert handler.response == 403

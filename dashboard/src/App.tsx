@@ -25,6 +25,7 @@ function App() {
   const [generating, setGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successSummary, setSuccessSummary] = useState<any>(null);
+  const [slideUrls, setSlideUrls] = useState<string[]>([]);
 
   useEffect(() => {
     fetchCandidates();
@@ -104,6 +105,7 @@ function App() {
     setGenerating(true);
     setError(null);
     setSuccessSummary(null);
+    setSlideUrls([]);
 
     // Map selected keys to the original track objects in selection order
     const selectedTracks = sortedList.filter(c => selectedKeys.has(c.track_key));
@@ -120,6 +122,7 @@ function App() {
       }
       const data = await resp.json();
       setSuccessSummary(data.summary);
+      setSlideUrls(data.slides || []);
     } catch (err: any) {
       setError(err.message || 'Failed to generate slideshow.');
     } finally {
@@ -364,7 +367,9 @@ function App() {
                 </div>
                 <div className="text-xs text-emerald-300/90 leading-relaxed flex flex-col gap-1">
                   <div>
-                    Wrote <strong>{successSummary.slide_count}</strong> slides to:
+                    Rendered <strong>{successSummary.slide_count}</strong> slide(s)
+                    — view & save them in <strong>Your Slides</strong> on the
+                    right. (Also saved on the host at:)
                   </div>
                   <div className="font-mono bg-black/30 p-1.5 rounded select-all mt-1 break-all overflow-x-auto">
                     {successSummary.out_dir}
@@ -377,6 +382,43 @@ function App() {
 
         {/* Right column (candidates pool list, spans 3 grid cols) */}
         <section className="lg:col-span-3 flex flex-col gap-4">
+          {slideUrls.length > 0 && (
+            <div className="bg-[#161920] border border-emerald-900/40 rounded-2xl p-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-md font-bold text-gray-200 uppercase tracking-wider">
+                  Your Slides ({slideUrls.length})
+                </h2>
+                <span className="text-xs text-emerald-300/90 bg-emerald-950/40 border border-emerald-900/60 rounded-lg px-2.5 py-1">
+                  📱 iPhone: long-press a slide → <strong>Add to Photos</strong>
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {slideUrls.map((url, i) => (
+                  <a
+                    key={url}
+                    href={`${apiBase}${url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex flex-col gap-1.5"
+                  >
+                    <img
+                      src={`${apiBase}${url}`}
+                      alt={`Slide ${i + 1}`}
+                      className="w-full rounded-xl border border-gray-800 shadow-lg group-hover:border-purple-500/60 transition-colors"
+                    />
+                    <span className="text-[11px] text-gray-400 text-center font-medium">
+                      Slide {i + 1}
+                    </span>
+                  </a>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Tap a slide to open it full-size, then long-press →{' '}
+                <strong>Add to Photos</strong> to save it to your Camera Roll /
+                iCloud Photos. On desktop, right-click → Save image.
+              </p>
+            </div>
+          )}
           {error && (
             <div className="bg-red-950/40 border border-red-900/60 text-red-300 rounded-2xl p-4 text-sm flex items-start gap-3">
               <svg

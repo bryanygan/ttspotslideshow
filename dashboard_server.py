@@ -27,6 +27,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/candidates":
             self.handle_get_candidates(parsed)
+        elif parsed.path.startswith("/api/slides/"):
+            self.handle_get_slide(parsed)
         else:
             self.handle_static_files(parsed)
 
@@ -126,14 +128,51 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
             return
 
+        # Expose each rendered slide as a GET-able URL so the dashboard can show
+        # the images (and the user can save them straight to their phone's Photos).
+        recap_id = Path(summary["out_dir"]).name
+        slides = [
+            f"/api/slides/{recap_id}/slide_{i}.png"
+            for i in range(1, summary["slide_count"] + 1)
+        ]
+
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(
-            json.dumps({"status": "success", "summary": summary}).encode(
-                "utf-8"
-            )
+            json.dumps(
+                {"status": "success", "summary": summary, "slides": slides}
+            ).encode("utf-8")
         )
+
+    def handle_get_slide(self, parsed):
+        """Serve a rendered slide PNG from output/slides/<recap-id>/<file>."""
+        rel = parsed.path[len("/api/slides/"):]
+        slides_root = Path("output") / "slides"
+        file_path = slides_root / rel
+
+        # Same containment guard as static files: resolve, then verify the path
+        # stays inside output/slides (blocks ../ traversal).
+        try:
+            file_path = file_path.resolve()
+            root_resolved = slides_root.resolve()
+            if not file_path.is_relative_to(root_resolved):
+                self.send_error(403, "Forbidden")
+                return
+        except Exception:
+            self.send_error(404, "Not Found")
+            return
+
+        if not file_path.exists() or file_path.is_dir():
+            self.send_error(404, "Not Found")
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(file_path.stat().st_size))
+        self.end_headers()
+        with open(file_path, "rb") as f:
+            self.wfile.write(f.read())
 
     def handle_static_files(self, parsed):
         dist_dir = Path("dashboard") / "dist"

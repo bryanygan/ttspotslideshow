@@ -330,6 +330,84 @@ If you'd like to run live development hot-reloading for the dashboard UI:
    ```
 3. Open **[http://localhost:5173/](http://localhost:5173/)** (which will automatically query the backend server on port 8000).
 
+### 3. Saving slides to your phone (iPhone → iCloud Photos)
+
+After you click **Generate Recap Slides**, the rendered slides appear in the
+**Your Slides** panel as full images (they're served by the backend at
+`GET /api/slides/<recap-id>/slide_N.png`). To save them:
+
+- **iPhone:** long-press a slide → **Add to Photos**. It lands in your Camera
+  Roll and syncs to iCloud Photos, ready to post to TikTok.
+- **Desktop:** right-click → **Save image**.
+
+The slides are also written to `output/slides/recap-<date>/` on the host.
+
+---
+
+## Remote access — deploy the dashboard (Cloudflare Pages + Tunnel)
+
+> **Architecture:** Cloudflare Pages only hosts the **static React frontend**. The
+> actual generation (Pillow, the SQLite DB, your Last.fm data) runs on the host PC
+> via `dashboard_server.py`. The hosted page reaches the host through a Cloudflare
+> Tunnel. So to use this away from home you need: (1) the host PC always-on running
+> the server, (2) a tunnel exposing it as HTTPS, (3) the Pages site pointed at that
+> tunnel URL.
+
+### 1. Run the project on an always-on PC (e.g. a mini PC)
+
+```powershell
+git clone https://github.com/bryanygan/ttspotslideshow.git
+cd ttspotslideshow
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
+```
+
+Copy these **gitignored** files over from your dev machine (same paths):
+`.env`, `.spotify_cache` (cached OAuth token — avoids a browser prompt under Task
+Scheduler), `data/plays.db`, and `data/scrobbles-*.xml`. Then verify:
+`python -m pytest -q`.
+
+Set up the bi-daily Task Scheduler job (see **Phase 4** above) and run the
+dashboard backend on boot (a Task Scheduler task triggered **At startup**, *Run
+whether user is logged on or not*, running `dashboard_server.py`).
+
+### 2. Deploy the frontend to Cloudflare Pages (one-time)
+
+1. Cloudflare dashboard → **Workers & Pages → Create → Pages → Connect to Git** →
+   select this repo.
+2. Build settings:
+   - **Framework preset:** Vite
+   - **Build command:** `npm run build`
+   - **Build output directory:** `dist`
+   - **Root directory (Advanced):** `dashboard`
+3. Deploy → you get `https://<project>.pages.dev`.
+
+### 3. Expose the host backend with a Cloudflare Tunnel
+
+Cloudflare Pages is HTTPS, so it can't call `http://localhost:8000` remotely — use
+an HTTPS tunnel. On the host, install `cloudflared`, then either:
+
+- **Quick (ephemeral URL, good for testing):**
+  ```powershell
+  cloudflared tunnel --url http://localhost:8000   # prints https://<random>.trycloudflare.com
+  ```
+- **Permanent URL (needs a domain on Cloudflare):** create a *named* tunnel, route
+  a subdomain (e.g. `recap.yourdomain.com`) to `localhost:8000`, and
+  `cloudflared service install` so it survives reboots.
+
+The server already sends `Access-Control-Allow-Origin: *`, so cross-origin calls
+from `*.pages.dev` work out of the box.
+
+### 4. Connect & secure
+
+- On your `pages.dev` site, paste the tunnel URL into the header **Backend API**
+  field (saved per-browser in localStorage — set it once on each device).
+- **Lock it down with Cloudflare Access** (Zero Trust): the tunnel is public, so
+  add an Access **self-hosted application** on the tunnel hostname with a policy
+  that allows only your email (one-time PIN). This requires no code change and
+  stops anyone else from hitting `/api/generate`.
+
 ---
 
 ## Rendering cards directly (Phase 2 demo)
