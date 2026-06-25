@@ -72,3 +72,25 @@ def test_different_songs_same_second_both_kept():
     _lastfm(conn, "Yeat", "Money", 1000)
     rows = db.canonical_plays(conn, window_seconds=120)
     assert len(rows) == 2
+
+
+def test_since_unix_keeps_boundary_twin_dedup():
+    # A Last.fm twin just before the window must still let the in-window Spotify
+    # row win (the look-back buffer makes this dedup correct).
+    conn = _conn()
+    X = 100_000
+    _lastfm(conn, "carti", "location", X - 50)   # buffer (within window_seconds)
+    _spotify(conn, "Carti", "Location", X + 10)  # in-window, same track
+    rows = db.canonical_plays(conn, window_seconds=120, since_unix=X)
+    assert len(rows) == 1
+    assert rows[0]["source"] == "spotify"
+    assert rows[0]["played_at_unix"] == X + 10
+
+
+def test_since_unix_excludes_pre_window_rows():
+    conn = _conn()
+    X = 100_000
+    _lastfm(conn, "A", "old", X - 500)   # well before the window
+    _lastfm(conn, "B", "new", X + 5)
+    rows = db.canonical_plays(conn, since_unix=X)
+    assert {(r["artist"], r["name"]) for r in rows} == {("B", "new")}
