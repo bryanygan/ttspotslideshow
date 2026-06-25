@@ -3,11 +3,16 @@
 Run: python -m ingest.enrich_cli
 """
 
+import logging
+
 import config
 import db
 from ingest.lastfm_import import import_scrobbles
 from ingest.genres import enrich_all
 from spotify_client import get_client
+from logsetup import setup_logging
+
+LOG = logging.getLogger("enrich")
 
 
 def run_ingest(conn, xml_path, spotify_client, lastfm_api_key, fetch=None,
@@ -63,19 +68,20 @@ def main() -> None:
     args = build_parser().parse_args()
     skip_spotify, refresh = resolve_modes(args)
 
+    setup_logging("enrich")
     config.assert_credentials()
     xml_path = config.resolve_export_path()
     if not config.LASTFM_API_KEY:
-        print("Warning: LAST_FM_API_KEY not set — Last.fm genres unavailable.")
+        LOG.warning("LAST_FM_API_KEY not set — Last.fm genres unavailable.")
 
     def progress(done, total):
-        print(f"  enriching artists: {done}/{total}", flush=True)
+        LOG.info("  enriching artists: %d/%d", done, total)
 
     mode = ("Last.fm-refresh" if args.lastfm_refresh
             else "Last.fm-only" if args.lastfm_only
             else "refresh non-Spotify" if args.refresh else "Spotify-primary")
-    print(f"Importing scrobbles + enriching artist genres ({mode}, "
-          "resumable — safe to re-run if interrupted)...", flush=True)
+    LOG.info("Importing scrobbles + enriching artist genres (%s, "
+             "resumable — safe to re-run if interrupted)...", mode)
     with db.connect() as conn:
         summary = run_ingest(
             conn, xml_path, get_client(), config.LASTFM_API_KEY,
@@ -83,21 +89,21 @@ def main() -> None:
             skip_spotify=skip_spotify, refresh=refresh,
         )
 
-    print(f"Imported {summary['imported']} scrobbles "
-          f"(skipped {summary['skipped']}).")
-    print(f"Plays by source: {summary['by_source']}")
+    LOG.info("Imported %d scrobbles (skipped %d).",
+             summary["imported"], summary["skipped"])
+    LOG.info("Plays by source: %s", summary["by_source"])
     enriched = summary["enriched"]
-    print(f"Artists enriched: spotify={enriched['spotify']} "
-          f"lastfm={enriched['lastfm']} none={enriched['none']} "
-          f"skipped={enriched['skipped']} deferred={enriched['deferred']}")
+    LOG.info("Artists enriched: spotify=%d lastfm=%d none=%d skipped=%d deferred=%d",
+             enriched["spotify"], enriched["lastfm"], enriched["none"],
+             enriched["skipped"], enriched["deferred"])
     if enriched["stopped_early"]:
-        print("  NOTE: stopped early — Spotify is rate-limiting. The import and "
-              "enriched artists are saved; re-run later to fill in the deferred "
-              "artists (it resumes automatically).")
-    print(f"Canonical (deduped) plays: {summary['canonical_plays']}")
-    print("Bucket distribution:")
+        LOG.warning("Stopped early — Spotify is rate-limiting. The import and "
+                    "enriched artists are saved; re-run later to fill in the "
+                    "deferred artists (it resumes automatically).")
+    LOG.info("Canonical (deduped) plays: %d", summary["canonical_plays"])
+    LOG.info("Bucket distribution:")
     for bucket, count in summary["buckets"].items():
-        print(f"  {bucket:<12} {count}")
+        LOG.info("  %-12s %d", bucket, count)
 
 
 if __name__ == "__main__":
