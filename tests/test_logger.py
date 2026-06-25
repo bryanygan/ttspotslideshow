@@ -79,6 +79,29 @@ class FakeRecentSpotify(FakeArtistSpotify):
         return {"items": self.items}
 
 
+def test_latest_played_at_is_source_scoped(monkeypatch):
+    # The Last.fm import holds newer timestamps than the last Spotify play; the
+    # logger's cursor must ignore them or it skips real Spotify plays.
+    conn = _conn()
+    db.insert_play(
+        conn, track_id="s1", name="S", artist="A", artist_id="a",
+        artist_genre=None, album_art_url="", popularity=None,
+        played_at="2026-06-20T00:00:00+00:00",
+    )
+    db.insert_lastfm_play(
+        conn, track_id="", name="L", artist="B", album_art_url="",
+        played_at="2026-06-25T00:00:00+00:00", played_at_unix=1782345600,
+    )
+
+    @contextmanager
+    def fake_connect():
+        yield conn
+    monkeypatch.setattr(db, "connect", fake_connect)
+
+    assert db.latest_played_at(source="spotify") == "2026-06-20T00:00:00+00:00"
+    assert db.latest_played_at() == "2026-06-25T00:00:00+00:00"  # unscoped = newer
+
+
 def test_log_recent_plays_inserts_and_is_idempotent(monkeypatch):
     conn = _conn()
     items = [{
@@ -93,7 +116,7 @@ def test_log_recent_plays_inserts_and_is_idempotent(monkeypatch):
 
     monkeypatch.setattr(logger, "get_client", lambda: sp)
     monkeypatch.setattr(db, "init_db", lambda: None)
-    monkeypatch.setattr(db, "latest_played_at", lambda: None)
+    monkeypatch.setattr(db, "latest_played_at", lambda source=None: None)
 
     @contextmanager
     def fake_connect():

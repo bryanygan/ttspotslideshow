@@ -127,13 +127,21 @@ def init_db() -> None:
         migrate(conn)
 
 
-def latest_played_at() -> Optional[str]:
-    """Most recent played_at we've already logged (ISO string), or None if empty.
+def latest_played_at(source: Optional[str] = None) -> Optional[str]:
+    """Most recent played_at we've logged (ISO string), or None if empty.
 
-    Used to fetch only newer plays from Spotify on each run.
+    Pass ``source='spotify'`` for the logger's "fetch since" cursor: the Last.fm
+    import holds timestamps newer than the last Spotify play, so an unscoped MAX
+    would push the cursor forward and silently skip real Spotify plays.
     """
     with connect() as conn:
-        row = conn.execute("SELECT MAX(played_at) AS m FROM plays").fetchone()
+        if source is not None:
+            row = conn.execute(
+                "SELECT MAX(played_at) AS m FROM plays WHERE source = ?",
+                (source,),
+            ).fetchone()
+        else:
+            row = conn.execute("SELECT MAX(played_at) AS m FROM plays").fetchone()
         return row["m"] if row and row["m"] else None
 
 
