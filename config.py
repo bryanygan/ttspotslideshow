@@ -27,6 +27,7 @@ SCOPES = "user-read-recently-played user-top-read"
 LASTFM_API_KEY = os.getenv("LAST_FM_API_KEY")
 LASTFM_SHARED_SECRET = os.getenv("LAST_FM_SHARED_SECRET")
 LASTFM_EXPORT_PATH = os.getenv("LASTFM_EXPORT_PATH")
+LASTFM_USER = os.getenv("LAST_FM_USER")
 
 # --- Local file paths ---
 DATA_DIR = PROJECT_ROOT / "data"
@@ -71,3 +72,20 @@ def resolve_export_path() -> Path:
             "LASTFM_EXPORT_PATH in .env."
         )
     return matches[-1]
+
+
+def get_lastfm_user() -> str:
+    """Get the Last.fm username from config or auto-detect from scrobbles file."""
+    if LASTFM_USER:
+        return LASTFM_USER
+    # Try to auto-detect from XML file name
+    try:
+        matches = sorted(DATA_DIR.glob("scrobbles-*.xml"))
+        if matches:
+            xml_path = matches[-1]
+            parts = xml_path.stem.split("-")
+            if len(parts) >= 2:
+                return parts[1]
+    except Exception:
+        pass
+    return ""

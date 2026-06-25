@@ -71,3 +71,105 @@ def test_import_inserts_and_is_idempotent(tmp_path):
     again_imported, _ = import_scrobbles(conn, _write(tmp_path))
     assert again_imported == 0  # idempotent
     assert db.play_count_by_source(conn)["lastfm"] == 2
+
+
+def test_latest_lastfm_played_at_unix():
+    conn = _conn()
+    db.migrate(conn)
+    # empty
+    assert db.latest_lastfm_played_at_unix(conn) is None
+    # Spotify play (should not count for lastfm)
+    db.insert_play(
+        conn, track_id="s1", name="TrackS", artist="ArtistS",
+        artist_id="a1", artist_genre="pop", album_art_url="",
+        popularity=80, played_at="2026-06-24T00:00:00Z"
+    )
+    assert db.latest_lastfm_played_at_unix(conn) is None
+    # Lastfm play
+    db.insert_lastfm_play(
+        conn, track_id="l1", name="TrackL", artist="ArtistL",
+        album_art_url="", played_at="2026-06-24T00:00:00Z",
+        played_at_unix=1782260000
+    )
+    assert db.latest_lastfm_played_at_unix(conn) == 1782260000
+
+
+def test_import_recent_from_api_paging_and_mapping():
+    conn = _conn()
+    db.migrate(conn)
+
+    # Let's mock the fetch to return page 1 then page 2.
+    pages = [
+        # page 1
+        {
+            "recenttracks": {
+                "track": [
+                    {
+                        "artist": {"#text": "Artist A"},
+                        "name": "Track A",
+                        "mbid": "mbidA",
+                        "image": [
+                            {"size": "extralarge", "#text": "https://img.jpg"}
+                        ],
+                        "date": {"uts": "1782260100"}
+                    },
+                    {
+                        "artist": {"#text": "Artist B"},
+                        "name": "Track B",
+                        "mbid": "",
+                        "image": [],
+                        "@attr": {"nowplaying": "true"}  # will be skipped
+                    }
+                ],
+                "@attr": {
+                    "totalPages": "2",
+                    "page": "1"
+                }
+            }
+        },
+        # page 2
+        {
+            "recenttracks": {
+                "track": [
+                    {
+                        "artist": {"#text": "Artist C"},
+                        "name": "Track C",
+                        "mbid": "mbidC",
+                        "image": [],
+                        "date": {"uts": "1782260000"}
+                    }
+                ],
+                "@attr": {
+                    "totalPages": "2",
+                    "page": "2"
+                }
+            }
+        }
+    ]
+
+    import json
+    urls_called = []
+    def fetch(url):
+        urls_called.append(url)
+        p = pages[len(urls_called) - 1]
+        return json.dumps(p)
+
+    from ingest.lastfm_import import import_recent_from_api
+    added = import_recent_from_api(
+        conn, api_key="KEY", username="User",
+        since_unix=1782250000, fetch=fetch
+    )
+
+    assert added == 2
+    assert len(urls_called) == 2
+    assert "page=1" in urls_called[0]
+    assert "page=2" in urls_called[1]
+    assert "from=1782250000" in urls_called[0]
+
+    rows = conn.execute("SELECT * FROM plays ORDER BY played_at_unix ASC").fetchall()
+    assert len(rows) == 2
+    assert rows[0]["name"] == "Track C"
+    assert rows[0]["track_id"] == "mbidC"
+    assert rows[1]["name"] == "Track A"
+    assert rows[1]["track_id"] == "mbidA"
+    assert rows[1]["album_art_url"] == "https://img.jpg"

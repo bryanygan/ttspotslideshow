@@ -234,6 +234,49 @@ accounts — image generation is automated, the ~30-second upload is not).
 
 ---
 
+## Phase 4 — Automation (Bi-daily scheduled run)
+
+We automate the full generation pipeline using a single orchestration script `run_bidaily.py`. On each execution, this script:
+1. Migrates the database if any migrations are pending (`db.init_db()`).
+2. Pulls recently played tracks from Spotify (`logger.py`).
+3. Fetches new scrobbles incrementally from the Last.fm API (`import_recent_from_api`).
+4. Selects candidates, resolves artwork, and builds the slideshow into `output/slides/<date>/`.
+
+### Run manually:
+```powershell
+python run_bidaily.py
+```
+
+Options:
+- `--skip-spotify`: Skip logging Spotify recently played tracks (e.g. if credentials are unconfigured or blocked).
+- `--skip-lastfm`: Skip importing from the Last.fm API.
+- `--out-dir <path>`: Override the default slide output directory.
+
+### Windows Task Scheduler Setup
+
+To schedule the generation of slideshow slides automatically (e.g., every other day):
+
+1. Open **Task Scheduler**.
+2. Click **Create Basic Task...** and name it (e.g. `Spotify-Slideshow-Generator`).
+3. Set Trigger to **Daily**, and set **Recur every: 2 days**.
+4. Set Action to **Start a program**.
+5. Fill in the parameters:
+   - **Program/script**: Path to virtualenv python, e.g. `C:\Users\prinp\Documents\GitHub\ttspotslideshow\.venv\Scripts\python.exe`
+   - **Add arguments**: `run_bidaily.py`
+   - **Start in**: Repo root folder, e.g. `C:\Users\prinp\Documents\GitHub\ttspotslideshow` (critical for resolving relative file outputs and databases).
+6. Save the task.
+
+### Periodic Spotify Genre Upgrade (Optional)
+
+Since the Spotify API is subject to aggressive rate limits, bulk updates can trigger 429 blocks. Once your initial bulk Last.fm tags are resolved, you can schedule a separate daily/weekly task to run the enrichment refresh:
+- **Program/script**: `C:\Users\prinp\Documents\GitHub\ttspotslideshow\.venv\Scripts\python.exe`
+- **Add arguments**: `-m ingest.enrich_cli --refresh`
+- **Start in**: `C:\Users\prinp\Documents\GitHub\ttspotslideshow`
+
+This task incrementally upgrades artists in your database from Last.fm tags to richer Spotify genres over time, without hammering the API.
+
+---
+
 ## Rendering cards directly (Phase 2 demo)
 
 Render a sample 2×2 slide from a few real tracks (downloads their album art):

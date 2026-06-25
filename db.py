@@ -137,6 +137,14 @@ def latest_played_at() -> Optional[str]:
         return row["m"] if row and row["m"] else None
 
 
+def latest_lastfm_played_at_unix(conn: sqlite3.Connection) -> Optional[int]:
+    """Return the maximum played_at_unix for Last.fm plays, or None."""
+    row = conn.execute(
+        "SELECT MAX(played_at_unix) AS m FROM plays WHERE source = 'lastfm'"
+    ).fetchone()
+    return row["m"] if row and row["m"] else None
+
+
 def insert_play(
     conn: sqlite3.Connection,
     *,
