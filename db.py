@@ -60,6 +60,14 @@ CREATE TABLE IF NOT EXISTS artists (
 );
 """
 
+CREATE_FEATURED = """
+CREATE TABLE IF NOT EXISTS featured_tracks (
+    track_key          TEXT PRIMARY KEY,
+    last_featured_date TEXT NOT NULL,
+    times_featured     INTEGER NOT NULL
+);
+"""
+
 
 def _iso_to_unix(iso: str) -> int:
     """ISO-8601 timestamp (may end in 'Z') -> epoch seconds."""
@@ -92,6 +100,7 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.execute("DROP TABLE plays_old")
     conn.execute(CREATE_ARTIST_GENRES)
     conn.execute(CREATE_ARTISTS)
+    conn.execute(CREATE_FEATURED)
     conn.executescript(CREATE_INDEXES)
 
 
@@ -309,3 +318,65 @@ def bucket_distribution(conn: sqlite3.Connection) -> dict:
         "GROUP BY primary_bucket ORDER BY c DESC"
     ).fetchall()
     return {r["primary_bucket"]: r["c"] for r in rows}
+
+
+def featured_history(conn: sqlite3.Connection) -> dict:
+    """Return {track_key: last_featured_date} for every previously featured track."""
+    rows = conn.execute(
+        "SELECT track_key, last_featured_date FROM featured_tracks"
+    ).fetchall()
+    return {r["track_key"]: r["last_featured_date"] for r in rows}
+
+
+def record_featured(conn: sqlite3.Connection, track_keys, run_date: str) -> None:
+    """Record that the given track_keys were featured on run_date (YYYY-MM-DD)."""
+    for key in track_keys:
+        conn.execute(
+            """
+            INSERT INTO featured_tracks (track_key, last_featured_date, times_featured)
+            VALUES (?, ?, 1)
+            ON CONFLICT(track_key) DO UPDATE SET
+                last_featured_date = excluded.last_featured_date,
+                times_featured = featured_tracks.times_featured + 1
+            """,
+            (key, run_date),
+        )
+
+
+def window_track_candidates(conn: sqlite3.Connection, start_unix: int) -> list:
+    """Aggregate canonical plays since start_unix into unique candidate tracks."""
+    genres = {
+        r["artist_key"]: r["primary_bucket"]
+        for r in conn.execute(
+            "SELECT artist_key, primary_bucket FROM artist_genres"
+        ).fetchall()
+    }
+
+    groups: dict = {}
+    for r in canonical_plays(conn):
+        unix = r["played_at_unix"]
+        if unix is None or unix < start_unix:
+            continue
+        artist_key = normalize(r["artist"])
+        track_key = artist_key + "\t" + normalize(r["name"])
+        g = groups.get(track_key)
+        if g is None:
+            groups[track_key] = g = {
+                "track_key": track_key,
+                "play_count": 0,
+                "track_id": r["track_id"],
+                "title": r["name"],
+                "artist": r["artist"],
+                "album_art_url": r["album_art_url"],
+                "last_played_unix": unix,
+                "primary_bucket": genres.get(artist_key, "unknown"),
+            }
+        g["play_count"] += 1
+        if unix >= g["last_played_unix"]:
+            # Refresh representative fields from the most recent play.
+            g["last_played_unix"] = unix
+            g["track_id"] = r["track_id"]
+            g["title"] = r["name"]
+            g["artist"] = r["artist"]
+            g["album_art_url"] = r["album_art_url"]
+    return list(groups.values())
