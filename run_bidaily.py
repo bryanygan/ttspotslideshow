@@ -10,7 +10,7 @@ This is intended to run as a scheduled task (e.g. via Windows Task Scheduler).
 """
 
 import argparse
-import sys
+import logging
 from pathlib import Path
 
 import config
@@ -19,6 +19,9 @@ from logger import log_recent_plays
 from ingest.lastfm_import import import_recent_from_api
 from slideshow.builder import build_slideshow
 from slideshow.cli import format_summary
+from logsetup import setup_logging
+
+LOG = logging.getLogger("run_bidaily")
 
 
 def run_pipeline(
@@ -33,30 +36,24 @@ def run_pipeline(
     if not skip_spotify:
         try:
             config.assert_credentials()
-            print("Fetching recently played tracks from Spotify...")
+            LOG.info("Fetching recently played tracks from Spotify...")
             spotify_added = log_recent_plays()
-            print(f"Added {spotify_added} new play(s) from Spotify.")
+            LOG.info("Added %d new play(s) from Spotify.", spotify_added)
         except Exception as e:
-            print(f"Warning: Spotify ingest failed: {e}", file=sys.stderr)
+            LOG.warning("Spotify ingest failed: %s", e)
 
     # 3. Ingest Last.fm plays
     if not skip_lastfm:
         if not config.LASTFM_API_KEY:
-            print(
-                "Warning: LAST_FM_API_KEY not set — skipping Last.fm API ingest.",
-                file=sys.stderr,
-            )
+            LOG.warning("LAST_FM_API_KEY not set — skipping Last.fm API ingest.")
         else:
             username = config.get_lastfm_user()
             if not username:
-                print(
-                    "Warning: Last.fm username not configured/detected — skipping Last.fm API ingest.",
-                    file=sys.stderr,
+                LOG.warning(
+                    "Last.fm username not configured/detected — skipping Last.fm API ingest."
                 )
             else:
-                print(
-                    f"Fetching recent tracks for user '{username}' from Last.fm API..."
-                )
+                LOG.info("Fetching recent tracks for user '%s' from Last.fm API...", username)
                 try:
                     with db.connect() as conn:
                         since_unix = db.latest_lastfm_played_at_unix(conn)
@@ -66,16 +63,16 @@ def run_pipeline(
                             username=username,
                             since_unix=since_unix,
                         )
-                        print(f"Added {lastfm_added} new play(s) from Last.fm API.")
+                        LOG.info("Added %d new play(s) from Last.fm API.", lastfm_added)
                 except Exception as e:
-                    print(f"Warning: Last.fm ingest failed: {e}", file=sys.stderr)
+                    LOG.warning("Last.fm ingest failed: %s", e)
 
     # 4. Build slideshow
-    print("Building slideshow...")
+    LOG.info("Building slideshow...")
     out_path = Path(out_root)
     with db.connect() as conn:
         slide_summary = build_slideshow(conn, out_path)
-    print(format_summary(slide_summary))
+    LOG.info(format_summary(slide_summary))
 
 
 def main() -> None:
@@ -99,6 +96,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    setup_logging("run_bidaily")
     run_pipeline(
         skip_spotify=args.skip_spotify,
         skip_lastfm=args.skip_lastfm,
