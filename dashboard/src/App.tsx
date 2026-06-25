@@ -13,9 +13,10 @@ interface Candidate {
   last_featured: string | null;
 }
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:8000' : '';
-
 function App() {
+  const [apiBase, setApiBase] = useState<string>(() => {
+    return localStorage.getItem('api_base') || 'http://localhost:8000';
+  });
   const [days, setDays] = useState<number>(7);
   const [sortBy, setSortBy] = useState<'plays' | 'underrated'>('plays');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -33,7 +34,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch(`${API_BASE}/api/candidates?days=${days}`);
+      const resp = await fetch(`${apiBase}/api/candidates?days=${days}`);
       if (!resp.ok) throw new Error(`HTTP error ${resp.status}`);
       const data = await resp.json();
       setCandidates(data.candidates || []);
@@ -105,7 +106,7 @@ function App() {
     const selectedTracks = sortedList.filter(c => selectedKeys.has(c.track_key));
 
     try {
-      const resp = await fetch(`${API_BASE}/api/generate`, {
+      const resp = await fetch(`${apiBase}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tracks: selectedTracks }),
@@ -153,7 +154,20 @@ function App() {
           </div>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 rounded-xl px-3 py-1.5 text-xs">
+            <span className="text-gray-500 font-bold uppercase tracking-wider">Backend API:</span>
+            <input
+              type="text"
+              value={apiBase}
+              onChange={(e) => {
+                setApiBase(e.target.value);
+                localStorage.setItem('api_base', e.target.value);
+              }}
+              className="bg-transparent text-gray-200 focus:outline-none w-56 font-mono text-[11px]"
+              placeholder="http://localhost:8000"
+            />
+          </div>
           <a
             href="https://github.com/bryanygan/ttspotslideshow"
             target="_blank"
