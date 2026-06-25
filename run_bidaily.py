@@ -11,7 +11,6 @@ This is intended to run as a scheduled task (e.g. via Windows Task Scheduler).
 
 import argparse
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import config

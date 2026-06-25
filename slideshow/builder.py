@@ -75,6 +75,36 @@ def disperse_tracks(
     return flat
 
 
+def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir):
+    """Resolve art, render cards, write 4-up slides, and record featured tracks.
+
+    Returns (slide_count, genre_spread). Shared by build_slideshow and
+    build_recap_slideshow so the rendering/IO logic lives in one place.
+    `featured_date` must be a plain ISO date (the selector parses it with
+    date.fromisoformat()), even when out_dir uses a "recap-" prefix.
+    """
+    art_cache: dict[str, str] = {}
+    cards = []
+    for track in rendered:
+        url = resolve_art_url(track, fetch=fetch, cache=art_cache)
+        art_path = load_art(url, cache_dir)
+        cards.append(render_card(track, art_path=art_path))
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    slide_count = 0
+    for i in range(0, len(cards), 4):
+        slide_count += 1
+        collage(cards[i:i + 4]).save(out_dir / f"slide_{slide_count}.png")
+
+    db.record_featured(conn, [t["track_key"] for t in rendered], featured_date)
+
+    spread: dict = {}
+    for track in rendered:
+        bucket = track.get("primary_bucket", "unknown")
+        spread[bucket] = spread.get(bucket, 0) + 1
+    return slide_count, spread
+
+
 def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
                     today=None, fetch=None, cache_dir=None) -> dict:
     """Build the dated slide set. Returns a run summary."""
@@ -101,24 +131,9 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
     if not rendered:
         return summary
 
-    art_cache: dict[str, str] = {}
-    cards = []
-    for track in rendered:
-        url = resolve_art_url(track, fetch=fetch, cache=art_cache)
-        art_path = load_art(url, cache_dir)
-        cards.append(render_card(track, art_path=art_path))
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    slide_count = 0
-    for i in range(0, len(cards), 4):
-        slide_count += 1
-        collage(cards[i:i + 4]).save(out_dir / f"slide_{slide_count}.png")
-
-    db.record_featured(conn, [t["track_key"] for t in rendered], run_date)
-
-    spread: dict = {}
-    for track in rendered:
-        spread[track["primary_bucket"]] = spread.get(track["primary_bucket"], 0) + 1
+    slide_count, spread = _render_and_save(
+        conn, rendered, out_dir, run_date, fetch, cache_dir
+    )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
     return summary
@@ -127,12 +142,6 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
 def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
                           fetch=None, cache_dir=None) -> dict:
     """Build slides for specific selected tracks. Returns a run summary."""
-    from datetime import date
-    from render.card import render_card
-    from render.collage import collage
-    from render.art import load_art
-    from slideshow.art_resolve import resolve_art_url
-
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
     out_dir = Path(out_root) / f"recap-{run_date}"
@@ -151,29 +160,12 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
     if not rendered:
         return summary
 
-    art_cache: dict[str, str] = {}
-    cards = []
-    for track in rendered:
-        url = resolve_art_url(track, fetch=fetch, cache=art_cache)
-        art_path = load_art(url, cache_dir)
-        cards.append(render_card(track, art_path=art_path))
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    slide_count = 0
-    for i in range(0, len(cards), 4):
-        slide_count += 1
-        collage(cards[i:i + 4]).save(out_dir / f"slide_{slide_count}.png")
-
     # Store the plain ISO run_date (NOT the "recap-" folder name): the selector's
     # novelty check parses last_featured_date with date.fromisoformat(), so a
     # "recap-..." string here would crash the next regular build.
-    db.record_featured(conn, [t["track_key"] for t in rendered], run_date)
-
-    spread: dict = {}
-    for track in rendered:
-        bucket = track.get("primary_bucket", "unknown")
-        spread[bucket] = spread.get(bucket, 0) + 1
-
+    slide_count, spread = _render_and_save(
+        conn, rendered, out_dir, run_date, fetch, cache_dir
+    )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
     return summary

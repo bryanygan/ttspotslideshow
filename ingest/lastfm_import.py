@@ -13,12 +13,16 @@ def _text(elem, tag: str) -> str:
     return (child.text or "").strip() if child is not None else ""
 
 
-def iter_scrobbles(xml_path) -> Iterator[dict]:
+def iter_scrobbles(xml_path, stats: Optional[dict] = None) -> Iterator[dict]:
     """Yield one dict per real, dated scrobble. Skips now-playing/malformed.
 
     Uses the root-clear idiom: children of the current <track> stay intact during
     extraction, and the root is cleared after each track so processed (emptied)
     track shells don't accumulate -> constant memory on the full export.
+
+    If a ``stats`` dict is passed, its ``"total"`` key is incremented for every
+    <track> element seen (yielded or skipped), so a caller can derive the skipped
+    count without a second full parse of the file.
     """
     root = None
     for event, elem in ET.iterparse(str(xml_path), events=("start", "end")):
@@ -28,6 +32,8 @@ def iter_scrobbles(xml_path) -> Iterator[dict]:
             continue
         if elem.tag != "track":
             continue
+        if stats is not None:
+            stats["total"] = stats.get("total", 0) + 1
         try:
             if elem.get("nowplaying") == "true":
                 continue
@@ -64,26 +70,22 @@ def iter_scrobbles(xml_path) -> Iterator[dict]:
 
 
 def import_scrobbles(conn, xml_path) -> tuple[int, int]:
-    """Import all scrobbles from xml_path. Returns (imported, skipped)."""
-    # Count total <track> elements to derive skipped = total - imported_candidates.
+    """Import all scrobbles from xml_path. Returns (imported, skipped).
+
+    Single-pass: ``stats["total"]`` counts every <track> element while iterating,
+    and ``skipped`` is the difference from the dated/valid candidates we attempted
+    to insert. (``imported`` <= ``candidates`` because of duplicate INSERT-IGNOREs;
+    ``skipped`` counts only XML-filtered tracks, not DB-rejected duplicates.)
+    """
+    stats = {"total": 0}
     imported = 0
     candidates = 0
-    for row in iter_scrobbles(xml_path):
+    for row in iter_scrobbles(xml_path, stats=stats):
         candidates += 1
         if db.insert_lastfm_play(conn, **row):
             imported += 1
-    total_tracks = _count_tracks(xml_path)
-    skipped = total_tracks - candidates
+    skipped = stats["total"] - candidates
     return imported, skipped
-
-
-def _count_tracks(xml_path) -> int:
-    n = 0
-    for _, elem in ET.iterparse(str(xml_path), events=("end",)):
-        if elem.tag == "track":
-            n += 1
-        elem.clear()
-    return n
 
 
 def import_recent_from_api(
