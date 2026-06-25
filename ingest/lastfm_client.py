@@ -2,15 +2,11 @@
 
 import json
 import urllib.parse
-import urllib.request
 from typing import Callable, Optional
 
+from webutil import fetch_text
+
 _BASE = "https://ws.audioscrobbler.com/2.0/"
-
-
-def _default_fetch(url: str) -> str:
-    with urllib.request.urlopen(url, timeout=15) as resp:
-        return resp.read().decode("utf-8")
 
 
 def get_top_tags(
@@ -33,7 +29,7 @@ def get_top_tags(
         "format": "json",
     })
     url = f"{_BASE}?{params}"
-    fetcher = fetch or _default_fetch
+    fetcher = fetch or fetch_text
     try:
         payload = json.loads(fetcher(url))
     except Exception:

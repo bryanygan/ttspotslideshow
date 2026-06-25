@@ -7,18 +7,16 @@ Usage:
 """
 
 import argparse
-import json
 import re
 import subprocess
 import sys
-import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
 
 import db
 from slideshow.builder import build_recap_slideshow
 from text_norm import normalize
+from webutil import itunes_search
 
 # A track duration like "3:45" or "12:07" — used to skip timestamp lines without
 # also dropping titles that merely contain a colon (e.g. "Re: Stacks").
@@ -75,25 +73,9 @@ def run_windows_ocr(image_path: Path) -> list[str]:
 
 
 def search_itunes(query: str, fetch: Optional[Callable[[str], str]] = None) -> Optional[dict]:
-    """Query iTunes Search API for a song query. Returns first result if valid."""
-    url = "https://itunes.apple.com/search?" + urllib.parse.urlencode(
-        {"term": query, "entity": "song", "limit": 1}
-    )
-
-    def _default_fetch(url_str: str) -> str:
-        with urllib.request.urlopen(url_str, timeout=10) as resp:
-            return resp.read().decode("utf-8")
-
-    fetcher = fetch or _default_fetch
-    try:
-        raw = fetcher(url)
-        data = json.loads(raw)
-        results = data.get("results", [])
-        if results:
-            return results[0]
-    except Exception:
-        pass
-    return None
+    """Query the iTunes Search API for a song query. Returns the first result, or None."""
+    results = itunes_search(query, fetch=fetch)
+    return results[0] if results else None
 
 
 def is_valid_match(line1: str, line2: str, result: dict) -> bool:

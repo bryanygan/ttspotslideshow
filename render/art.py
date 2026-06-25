@@ -5,13 +5,9 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
 
-# Last.fm serves this hash as its gray-star "no image" placeholder.
-DEFAULT_ART_HASH = "2a96cbd8b46e442fc41c2b86b821562f"
-
-
-def is_placeholder(url: Optional[str]) -> bool:
-    """True if the URL is empty/None or the Last.fm default placeholder image."""
-    return not url or DEFAULT_ART_HASH in url
+# is_placeholder / DEFAULT_ART_HASH live in webutil now (shared with ingest, which
+# previously had to import them from render). Re-exported here for existing callers.
+from webutil import DEFAULT_ART_HASH, is_placeholder  # noqa: F401
 
 
 def _default_fetch(url: str, dest: Path) -> None:
