@@ -105,6 +105,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(body)
             tracks = payload.get("tracks", [])
+            cover_title = payload.get("cover_title", None)
+            cover_subtitle = payload.get("cover_subtitle", None)
+            cover_theme = payload.get("cover_theme", None)
+            watermark = payload.get("watermark", None)
         except Exception as e:
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
@@ -130,7 +134,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             with db.connect() as conn:
                 out_root = Path("output") / "slides"
-                summary = build_recap_slideshow(conn, out_root, tracks)
+                summary = build_recap_slideshow(
+                    conn, out_root, tracks,
+                    cover_title=cover_title, cover_subtitle=cover_subtitle,
+                    cover_theme=cover_theme, watermark=watermark
+                )
         except Exception as e:
             self.send_response(500)
             self.send_header("Content-Type", "application/json")

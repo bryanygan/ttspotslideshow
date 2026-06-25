@@ -75,7 +75,9 @@ def disperse_tracks(
     return flat
 
 
-def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir, overrides_dir=None):
+def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
+                     overrides_dir=None, cover_title=None, cover_subtitle=None,
+                     cover_theme=None, watermark=None):
     """Resolve art, render cards, write 4-up slides, and record featured tracks.
 
     Returns (slide_count, genre_spread). Shared by build_slideshow and
@@ -97,9 +99,17 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir, o
 
     out_dir.mkdir(parents=True, exist_ok=True)
     slide_count = 0
+
+    # Draw and save cover slide first if requested
+    if cover_title:
+        from render.cover import render_cover_slide
+        cover = render_cover_slide(cover_title, cover_subtitle or "", theme=cover_theme, footer_text=watermark)
+        slide_count += 1
+        cover.save(out_dir / f"slide_{slide_count}.png")
+
     for i in range(0, len(cards), 4):
         slide_count += 1
-        collage(cards[i:i + 4]).save(out_dir / f"slide_{slide_count}.png")
+        collage(cards[i:i + 4], watermark=watermark).save(out_dir / f"slide_{slide_count}.png")
 
     db.record_featured(conn, [t["track_key"] for t in rendered], featured_date)
 
@@ -111,14 +121,16 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir, o
 
 
 def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
-                    today=None, fetch=None, cache_dir=None, overrides_dir=None) -> dict:
+                    today=None, fetch=None, cache_dir=None, overrides_dir=None,
+                    bypass_novelty=False, cover_title=None, cover_subtitle=None,
+                    cover_theme=None, watermark=None) -> dict:
     """Build the dated slide set. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
     out_dir = Path(out_root) / run_date
 
     candidates, days_used = resolve_window(conn, target, floor, now_unix=now_unix)
-    featured = db.featured_history(conn)
+    featured = {} if bypass_novelty else db.featured_history(conn)
     tracks = select_tracks(candidates, featured, run_date, target, floor)
     dispersed = disperse_tracks(tracks)
 
@@ -137,7 +149,9 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
         return summary
 
     slide_count, spread = _render_and_save(
-        conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir
+        conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
+        cover_title=cover_title, cover_subtitle=cover_subtitle,
+        cover_theme=cover_theme, watermark=watermark
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
@@ -145,7 +159,9 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
 
 
 def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
-                          fetch=None, cache_dir=None, overrides_dir=None) -> dict:
+                          fetch=None, cache_dir=None, overrides_dir=None,
+                          cover_title=None, cover_subtitle=None,
+                          cover_theme=None, watermark=None) -> dict:
     """Build slides for specific selected tracks. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -169,7 +185,9 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
     # novelty check parses last_featured_date with date.fromisoformat(), so a
     # "recap-..." string here would crash the next regular build.
     slide_count, spread = _render_and_save(
-        conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir
+        conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
+        cover_title=cover_title, cover_subtitle=cover_subtitle,
+        cover_theme=cover_theme, watermark=watermark
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread

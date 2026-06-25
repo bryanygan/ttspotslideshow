@@ -29,12 +29,30 @@ function App() {
   const [successSummary, setSuccessSummary] = useState<any>(null);
   const [slideUrls, setSlideUrls] = useState<string[]>([]);
 
+  // TikTok Specific Cover & Branding states
+  const [includeCover, setIncludeCover] = useState<boolean>(true);
+  const [coverTitle, setCoverTitle] = useState<string>('WEEKLY ROTATION');
+  const [coverSubtitle, setCoverSubtitle] = useState<string>('Last 7 Days');
+  const [coverTheme, setCoverTheme] = useState<string>('purple');
+  const [watermark, setWatermark] = useState<string>('');
+
   useEffect(() => {
     fetchCandidates();
     // Re-fetch when the window OR the backend URL changes (fixes a stale-closure
     // bug where editing the API base didn't trigger a refetch).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days, apiBase]);
+
+  // Sync default subtitle when the days window changes
+  useEffect(() => {
+    setCoverSubtitle(prev => {
+      const match = /^Last \d+ Days$/i.test(prev);
+      if (match || prev === '') {
+        return `Last ${days} Days`;
+      }
+      return prev;
+    });
+  }, [days]);
 
   const fetchCandidates = async () => {
     setLoading(true);
@@ -275,7 +293,13 @@ function App() {
       const resp = await fetch(`${apiBase}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tracks: selectedTracks }),
+        body: JSON.stringify({
+          tracks: selectedTracks,
+          cover_title: includeCover ? coverTitle : null,
+          cover_subtitle: includeCover ? coverSubtitle : null,
+          cover_theme: includeCover ? coverTheme : null,
+          watermark: watermark.trim() || null,
+        }),
       });
       if (!resp.ok) {
         const errData = await resp.json();
@@ -451,6 +475,92 @@ function App() {
                 >
                   Underrated
                 </button>
+              </div>
+            </div>
+
+            {/* TikTok Intro & Branding */}
+            <div className="flex flex-col gap-3 border-t border-gray-800 pt-4">
+              <h3 className="text-[11px] text-gray-500 uppercase tracking-wider font-bold">
+                TikTok Formatting
+              </h3>
+              
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-gray-350 font-semibold flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeCover}
+                    onChange={(e) => setIncludeCover(e.target.checked)}
+                    className="w-4 h-4 accent-purple-600 rounded bg-gray-900 border-gray-750 focus:ring-purple-500"
+                  />
+                  <span>Include Cover/Hook Slide</span>
+                </label>
+              </div>
+
+              {includeCover && (
+                <div className="flex flex-col gap-3.5 pl-3 border-l border-purple-500/30 mt-1">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Hook Text</span>
+                    <input
+                      type="text"
+                      value={coverTitle}
+                      onChange={(e) => setCoverTitle(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-800 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none"
+                      placeholder="e.g. WEEKLY ROTATION"
+                    />
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {['WEEKLY ROTATION', 'ELITE TASTE', 'CURRENT REPEATS', 'ON REPEAT'].map(hook => (
+                        <button
+                          key={hook}
+                          type="button"
+                          onClick={() => setCoverTitle(hook)}
+                          className="text-[9px] bg-gray-850 hover:bg-gray-800 text-gray-400 hover:text-white px-1.5 py-0.5 rounded border border-gray-800/80 transition-colors"
+                        >
+                          {hook}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Subtitle</span>
+                    <input
+                      type="text"
+                      value={coverSubtitle}
+                      onChange={(e) => setCoverSubtitle(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-800 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none"
+                      placeholder="e.g. Last 7 Days"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Cover Theme</span>
+                    <select
+                      value={coverTheme}
+                      onChange={(e) => setCoverTheme(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-850 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-xs text-gray-300 focus:outline-none cursor-pointer"
+                    >
+                      <option value="purple">🟣 Royal Purple</option>
+                      <option value="sunset">🌸 Hot Pink Sunset</option>
+                      <option value="sunrise">🔥 Sunrise Orange</option>
+                      <option value="neon">💖 Neon Pink</option>
+                      <option value="emerald">🟢 Emerald Green</option>
+                      <option value="royal">🔵 Classic Blue</option>
+                      <option value="dark">⚫ Charcoal Dark</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Watermark branding */}
+              <div className="flex flex-col gap-1 mt-1">
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Watermark / Footer (@user)</span>
+                <input
+                  type="text"
+                  value={watermark}
+                  onChange={(e) => setWatermark(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-800 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none font-mono"
+                  placeholder="e.g. @username"
+                />
               </div>
             </div>
 

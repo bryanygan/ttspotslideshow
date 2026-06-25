@@ -199,3 +199,43 @@ def test_build_uses_manual_overrides(tmp_path, monkeypatch):
 
     # 3 of the 4 tracks should trigger fetch, since Artist0 - Song0 is overridden
     assert len(fetch_calls) == 3
+
+
+def test_build_recap_with_cover_theme_and_watermark(tmp_path, monkeypatch):
+    conn = _conn()
+    tracks = [
+        {
+            "track_key": f"artist{i}\tsong{i}",
+            "track_id": f"id{i}",
+            "title": f"Song{i}",
+            "artist": f"Artist{i}",
+            "album_art_url": "https://lastfm/300.jpg",
+            "primary_bucket": "pop",
+        }
+        for i in range(4)
+    ]
+
+    monkeypatch.setattr(
+        rart, "_default_fetch",
+        lambda url, dest: Image.new("RGB", (300, 300), (90, 90, 90)).save(dest),
+    )
+
+    from slideshow.builder import build_recap_slideshow
+    summary = build_recap_slideshow(
+        conn, out_root=tmp_path / "out", tracks=tracks,
+        today="2026-06-25", fetch=lambda url: '{"results": []}', cache_dir=tmp_path / "art",
+        cover_title="MY HOOK", cover_subtitle="MY SUB", cover_theme="sunset", watermark="@myuser"
+    )
+
+    # 1 cover slide + 1 collage slide = 2 slides total
+    assert summary["slide_count"] == 2
+    assert summary["track_count"] == 4
+
+    cover_slide = tmp_path / "out" / "recap-2026-06-25" / "slide_1.png"
+    assert cover_slide.exists()
+    assert Image.open(cover_slide).size == (1080, 1920)
+
+    collage_slide = tmp_path / "out" / "recap-2026-06-25" / "slide_2.png"
+    assert collage_slide.exists()
+    assert Image.open(collage_slide).size == (1080, 1920)
+
