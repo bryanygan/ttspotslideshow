@@ -1,6 +1,32 @@
 import json
 import pytest
-from slideshow.ocr import is_valid_match, parse_tracks_from_lines
+from slideshow.ocr import is_valid_match, parse_tracks_from_lines, _is_duration
+
+
+def test_is_duration_distinguishes_timestamps_from_titles():
+    assert _is_duration("3:45")
+    assert _is_duration("12:07")
+    # Titles that merely contain a colon must NOT be treated as durations.
+    assert not _is_duration("Re: Stacks")
+    assert not _is_duration("Bonus: The Sequel")
+    assert not _is_duration("destroy me")
+
+
+def test_colon_titles_are_not_skipped():
+    # "Re: Stacks" contains a colon but is a real title; it should be paired and
+    # resolved, not dropped as a duration line.
+    lines = ["Re: Stacks", "Bon Iver"]
+    payload = {
+        "trackName": "Re: Stacks",
+        "artistName": "Bon Iver",
+        "artworkUrl100": "https://x100x100.jpg",
+        "trackId": 999,
+    }
+    fetch = lambda url: json.dumps({"results": [payload]})
+    tracks = parse_tracks_from_lines(lines, conn=None, fetch=fetch)
+    assert len(tracks) == 1
+    assert tracks[0]["title"] == "Re: Stacks"
+    assert tracks[0]["artist"] == "Bon Iver"
 
 
 def test_is_valid_match():

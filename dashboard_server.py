@@ -1,5 +1,4 @@
 import json
-import os
 import sys
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -144,11 +143,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
         else:
             file_path = dist_dir / path
 
-        # Security check: ensure path is within dist_dir
+        # Security check: ensure the resolved path is within dist_dir. Use
+        # is_relative_to (real path-segment containment) rather than a string
+        # startswith(), which is bypassable on Windows (e.g. a sibling
+        # "dashboard\\dist_evil" shares the prefix "dashboard\\dist").
         try:
             file_path = file_path.resolve()
             dist_resolved = dist_dir.resolve()
-            if not str(file_path).startswith(str(dist_resolved)):
+            if not file_path.is_relative_to(dist_resolved):
                 self.send_error(403, "Forbidden")
                 return
         except Exception:
@@ -173,6 +175,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             ".jpg": "image/jpeg",
             ".svg": "image/svg+xml",
             ".json": "application/json",
+            ".ico": "image/x-icon",
+            ".woff": "font/woff",
+            ".woff2": "font/woff2",
+            ".map": "application/json",
         }
         mime = mime_types.get(ext, "application/octet-stream")
 

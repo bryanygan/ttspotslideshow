@@ -28,7 +28,10 @@ function App() {
 
   useEffect(() => {
     fetchCandidates();
-  }, [days]);
+    // Re-fetch when the window OR the backend URL changes (fixes a stale-closure
+    // bug where editing the API base didn't trigger a refetch).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, apiBase]);
 
   const fetchCandidates = async () => {
     setLoading(true);

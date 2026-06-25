@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import urllib.parse
@@ -18,6 +19,14 @@ from typing import Callable, Optional
 import db
 from slideshow.builder import build_recap_slideshow
 from text_norm import normalize
+
+# A track duration like "3:45" or "12:07" — used to skip timestamp lines without
+# also dropping titles that merely contain a colon (e.g. "Re: Stacks").
+_DURATION_RE = re.compile(r"^\d{1,2}:\d{2}$")
+
+
+def _is_duration(line: str) -> bool:
+    return bool(_DURATION_RE.match(line.strip()))
 
 
 def run_windows_ocr(image_path: Path) -> list[str]:
@@ -125,10 +134,10 @@ def parse_tracks_from_lines(
         line1 = lines[i]
         line2 = lines[i + 1]
 
-        # Ignore lines containing durations (e.g., "3:45") or consecutive numbers
+        # Ignore duration lines (e.g., "3:45"), consecutive numbers, and stubs.
         if (
-            ":" in line1
-            or ":" in line2
+            _is_duration(line1)
+            or _is_duration(line2)
             or (line1.isdigit() and line2.isdigit())
             or len(line1) < 2
             or len(line2) < 2
