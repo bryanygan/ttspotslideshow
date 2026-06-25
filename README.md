@@ -1,21 +1,31 @@
 # TikTok Music Rotation
 
 Automated listening-history → Spotify-style Now-Playing card → TikTok slideshow
-generator, plus a weekly recap picker. See [CLAUDE.md](CLAUDE.md) for the full
-project context and roadmap.
+generator, plus a (future) weekly recap picker. See [CLAUDE.md](CLAUDE.md) for the
+full project context and roadmap.
 
 **Status:**
 - ✅ **Phase 1 — Logger.** Banks your Spotify plays into a local SQLite DB (live capture).
 - ✅ **Phase 2 — Card renderer.** Pillow engine that renders a Spotify-style card per
-  track and composites four into a 1080×1920 slide. 25 tests passing.
-- ⏭️ **Phase 3 — Selection + slideshow** (next): import history, pick 12–16 tracks
-  across genres, output dated slides.
+  track and composites four into a 1080×1920 slide.
+- ✅ **Phase 3 — Ingest + selection + slideshow.** Imports your Last.fm history,
+  enriches per-artist genres (Spotify → Last.fm fallback), picks 12–16 tracks across
+  genres for a bi-daily window, and writes a dated folder of slides.
+- ⏭️ **Phase 4 — Automate the bi-daily run** (Task Scheduler) — next.
+- ⏭️ **Phase 5 — Weekly recap dashboard** (React/TS) — later.
+
+All 88 tests pass (`python -m pytest -q`).
 
 > **Heads-up on the Spotify API (verified June 2026):** `recently-played`, top-tracks,
-> artist genres, and album art all still work. Two changes matter:
-> `track.popularity` was removed (so the future "most underrated" metric needs a
-> play-count signal instead), and **the app owner must have an active Spotify Premium
-> subscription** or the API stops working.
+> artist genres, and album art all still work, but three things matter:
+> - `track.popularity` was removed (so the future "most underrated" metric needs a
+>   play-count signal instead).
+> - **The app owner must have an active Spotify Premium subscription** or the API stops
+>   working.
+> - The app runs in **Development Mode** and is **aggressively rate-limited**. Genre
+>   enrichment that hits Spotify too hard can trigger an extended HTTP 429 block lasting
+>   hours. The enrichment tooling is hardened against this (see
+>   [Importing history + enriching genres](#phase-3a--importing-history--enriching-genres)).
 
 ---
 
@@ -23,11 +33,12 @@ project context and roadmap.
 
 | Source | Role | Notes |
 |--------|------|-------|
-| **Last.fm scrobble export** (`data/scrobbles-*.xml`) | Historical backbone | ~108k timestamped scrobbles (2020→2026), 15.5k tracks, album art ≤300×300. No genre/duration in the export. |
+| **Last.fm scrobble export** (`data/scrobbles-*.xml`) | Historical backbone | ~108k timestamped scrobbles (2020→2026). No genre/duration in the export — genres come from enrichment. |
 | **Spotify logger** (`logger.py`) | Live ongoing capture | Last-50 buffer; run on a schedule. |
 
-The renderer is data-source-agnostic — it takes a simple track dict
-(`track_id`, `title`, `artist`, `art_url`), so it works with either source.
+The two sources are merged in the `plays` table (tagged by `source`) and deduplicated
+across sources at query time. The renderer is data-source-agnostic — it takes a simple
+track dict, so it works with either.
 
 ---
 
@@ -35,16 +46,23 @@ The renderer is data-source-agnostic — it takes a simple track dict
 
 ```
 ttspotslideshow/
-├── CLAUDE.md             # full project context & roadmap
+├── CLAUDE.md             # full project context & roadmap (local-only, git-ignored)
 ├── README.md            # you are here
 ├── requirements.txt     # runtime deps (spotipy, python-dotenv, Pillow)
 ├── requirements-dev.txt # dev deps (pytest)
-├── .env.example         # template for your Spotify credentials
+├── .env.example         # template for Spotify + Last.fm credentials
 ├── config.py            # loads settings/paths (single source of truth)
-├── db.py                # SQLite schema + queries
+├── db.py                # SQLite schema + all queries (the data layer)
+├── text_norm.py         # normalize() — shared artist/title normalization
 ├── spotify_client.py    # spotipy OAuth wrapper
-├── logger.py            # Phase 1 entry point: log recently-played tracks
-├── render/              # Phase 2 rendering engine
+├── logger.py            # Phase 1: log Spotify recently-played -> plays
+├── ingest/              # Phase 3A: Last.fm import + genre enrichment
+│   ├── lastfm_import.py #   stream-parse export XML -> plays (source='lastfm')
+│   ├── lastfm_client.py #   stdlib Last.fm getTopTags client
+│   ├── genre_map.py     #   micro-genre -> hybrid bucket map + bucket_for()
+│   ├── genres.py        #   resolve_artist_genre / enrich_all (Spotify -> Last.fm)
+│   └── enrich_cli.py    #   `python -m ingest.enrich_cli [--lastfm-only|--refresh]`
+├── render/              # Phase 2: the card/collage renderer (Pillow)
 │   ├── colors.py        #   dominant-color extraction + gradient
 │   ├── fonts.py         #   cached Montserrat loading + text truncation
 │   ├── art.py           #   album-art download + on-disk cache
@@ -52,11 +70,32 @@ ttspotslideshow/
 │   ├── collage.py       #   four cards -> 1080×1920 slide
 │   ├── render_demo.py   #   CLI: render a sample 2×2 slide
 │   └── assets/fonts/    #   Montserrat .ttf files (tracked)
-├── tests/               # pytest suite for the renderer
-├── docs/superpowers/    # design spec + implementation plan
+├── slideshow/           # Phase 3B: selection + assembly
+│   ├── window.py        #   resolve_window (auto-widen 2→4→7→14→30 days)
+│   ├── selector.py      #   genre round-robin + play/recency/novelty score
+│   ├── art_resolve.py   #   iTunes hi-res art (600×600) + Last.fm fallback
+│   ├── builder.py       #   build_slideshow: select -> art -> render -> collage -> files
+│   └── cli.py           #   `python -m slideshow.cli`
+├── tests/               # pytest suite (all offline)
+├── docs/superpowers/    # design specs + implementation plans
 ├── data/                # SQLite DB, Last.fm export, album-art cache (git-ignored)
-└── output/              # generated slides (git-ignored)
+└── output/slides/<date>/ # generated slides (git-ignored)
 ```
+
+### Data model (`db.py`, `data/plays.db`)
+
+- **`plays`** — one row per play event (`track_id, name, artist, artist_id,
+  artist_genre, album_art_url, popularity, played_at, source, played_at_unix`).
+  `source` is `'spotify'` (logger) or `'lastfm'` (import).
+- **`artist_genres`** — the genre source for selection, keyed by normalized artist name.
+  Holds the resolved Spotify/Last.fm tags, a `primary_bucket`, and `genre_source`
+  (`'spotify'` | `'lastfm'` | `'none'`).
+- **`featured_tracks`** — records what the slideshow has already posted, so a track isn't
+  repeated for ~14 days (the "novelty" signal).
+
+`db.migrate(conn)` is idempotent and is run by `init_db()` and by the ingest CLI. The
+slideshow CLI does **not** migrate — run `python -c "import db; db.init_db()"` once before
+the first slideshow if `featured_tracks` doesn't exist yet.
 
 ---
 
@@ -71,14 +110,19 @@ ttspotslideshow/
    (Spotify requires the loopback IP `127.0.0.1`, not `localhost`.)
 4. Save, then open **Settings** to copy your **Client ID** and **Client Secret**.
 
-### 2. Configure local credentials
+### 2. (Optional) Get a Last.fm API key
+Genre enrichment and history import use Last.fm. Create a free key at
+[last.fm/api/account/create](https://www.last.fm/api/account/create).
+
+### 3. Configure local credentials
 ```powershell
 # from the project folder
 Copy-Item .env.example .env
 ```
-Open `.env` and paste in your Client ID and Client Secret.
+Open `.env` and paste in your Spotify Client ID/Secret and (optionally) your Last.fm
+API key + shared secret.
 
-### 3. Create the Python environment
+### 4. Create the Python environment
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -87,7 +131,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 > If `Activate.ps1` is blocked, run once:
 > `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
 
-### 4. Authorize (first run only)
+### 5. Authorize Spotify (first run only)
 ```powershell
 python logger.py --auth
 ```
@@ -96,7 +140,7 @@ won't be prompted again.
 
 ---
 
-## Running the logger
+## Running the logger (Phase 1)
 
 ```powershell
 python logger.py
@@ -123,7 +167,74 @@ several times a day to make sure nothing slips past that buffer.
 
 ---
 
-## Rendering cards (Phase 2)
+## Phase 3A — Importing history + enriching genres
+
+This step imports the Last.fm export into the `plays` table and resolves a genre for
+every artist (used to spread the slideshow across genres). It is **resumable** — safe to
+re-run if interrupted; it skips artists already done.
+
+```powershell
+# 1. Drop your Last.fm export at data/scrobbles-*.xml (newest is auto-detected).
+# 2. Import history + enrich genres:
+python -m ingest.enrich_cli
+```
+
+Genre resolution tries **Spotify first** (richer subgenres like `rage`/`plugg`), then
+falls back to **Last.fm tags**. It prints progress and a final bucket distribution.
+
+### Spotify rate-limit strategy (important)
+
+The Spotify app is in Development Mode and is aggressively rate-limited. A bulk
+enrichment run can trip an extended **HTTP 429 block lasting hours**. The CLI is hardened
+(short timeout, no long retry sleeps, commits every 50 artists, stops early after
+repeated 429s), but the practical workflow is:
+
+| When | Command | What it does |
+|------|---------|--------------|
+| Spotify is blocked / you want genres **now** | `python -m ingest.enrich_cli --lastfm-only` | Resolves genres from Last.fm only (never touches Spotify). Rows get `genre_source='lastfm'` or `'none'`. |
+| Spotify block has lifted | `python -m ingest.enrich_cli --refresh` | Re-processes every non-Spotify artist and upgrades it to richer Spotify genres. Spotify-sourced rows are left alone; if still rate-limited it defers and you re-run later. |
+| Normal first run | `python -m ingest.enrich_cli` | Spotify-primary with Last.fm fallback. |
+
+**Check whether Spotify is still blocked** (prints genres = unblocked; raises 429 =
+still blocked):
+```powershell
+python -c "from spotify_client import get_client; print(get_client().search(q='Drake',type='artist',limit=1)['artists']['items'][0]['genres'])"
+```
+
+> **Don't hammer the Spotify API.** Prefer `--lastfm-only` for bulk work and reserve
+> `--refresh` for an occasional, spaced-out upgrade pass.
+
+---
+
+## Phase 3B — Generating the slideshow
+
+```powershell
+# First time only: ensure the featured_tracks table exists.
+python -c "import db; db.init_db()"
+
+# Build the slides:
+python -m slideshow.cli
+```
+
+Output lands in `output/slides/<today>/` as `slide_1.png`, `slide_2.png`, … (each
+1080×1920). The CLI prints how many slides it wrote, the window it used, and the genre
+spread.
+
+**How selection works:**
+- **Window:** starts with the last 2 days and auto-widens (2 → 4 → 7 → 14 → 30 days)
+  until it can fill a slide.
+- **Variety:** round-robins across genre buckets so a single slide isn't all one genre.
+- **Freshness:** each candidate is scored on play count, recency, and novelty (tracks
+  featured in the last ~14 days are penalized so the rotation stays fresh).
+- **Count:** targets 16 tracks (floor 12), chunked into groups of 4 → 3–4 slides.
+- **Art:** pulls hi-res album art from iTunes (600×600), falling back to Last.fm.
+
+Then post the slides to TikTok manually (TikTok has no clean posting API for personal
+accounts — image generation is automated, the ~30-second upload is not).
+
+---
+
+## Rendering cards directly (Phase 2 demo)
 
 Render a sample 2×2 slide from a few real tracks (downloads their album art):
 ```powershell
@@ -135,7 +246,11 @@ Each card shows album art, title, artist, and a progress scrubber on a gradient
 pulled from the album art's dominant color. The scrubber position is seeded from
 the track id, so the same track always renders the same (plausible-looking) spot.
 
-Run the test suite:
+---
+
+## Running the tests
+
+All tests are offline (network is dependency-injected / monkeypatched):
 ```powershell
 python -m pytest -q
 ```
@@ -144,12 +259,7 @@ python -m pytest -q
 
 ## What's next (roadmap)
 
-- **Phase 3 — Selection + slideshow** (next): import the Last.fm export into SQLite,
-  query a bi-daily window, pick 12–16 unique tracks across distinct genres, chunk
-  into groups of 4 → dated folder of slides.
-- **Phase 4 — Automate the bi-daily run** (Task Scheduler).
-- **Phase 5 — Weekly recap dashboard** (React/TS) for hand-picking best/underrated.
-
-> Two open items feed Phase 3: a **genre source** for the Last.fm data (Spotify
-> per-artist lookup vs Last.fm tags), and finishing **Phase 0** so the live logger
-> starts collecting.
+- **Phase 4 — Automate the bi-daily run.** A single entry script (freshen plays →
+  migrate → build slideshow) scheduled via Task Scheduler, plus an occasional, spaced-out
+  `--refresh` task to upgrade Last.fm genres to Spotify once the rate-limit block clears.
+- **Phase 5 — Weekly recap dashboard** (React/TS) for hand-picking best/underrated tracks.
