@@ -21,6 +21,7 @@ function App() {
   const [sortBy, setSortBy] = useState<'plays' | 'underrated'>('plays');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [selectedOrder, setSelectedOrder] = useState<string[]>([]);
   const [quickSelectCount, setQuickSelectCount] = useState<number>(16);
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
@@ -45,6 +46,7 @@ function App() {
       setCandidates(data.candidates || []);
       // Reset selection when changing candidates window
       setSelectedKeys(new Set());
+      setSelectedOrder([]);
       setSuccessSummary(null);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch candidates.');
@@ -76,35 +78,47 @@ function App() {
   const sortedList = getSortedCandidates();
 
   const handleToggleSelect = (key: string) => {
-    const next = new Set(selectedKeys);
-    if (next.has(key)) {
-      next.delete(key);
+    const nextKeys = new Set(selectedKeys);
+    let nextOrder = [...selectedOrder];
+
+    if (nextKeys.has(key)) {
+      nextKeys.delete(key);
+      nextOrder = nextOrder.filter(k => k !== key);
     } else {
-      next.add(key);
+      nextKeys.add(key);
+      nextOrder.push(key);
     }
-    setSelectedKeys(next);
+
+    setSelectedKeys(nextKeys);
+    setSelectedOrder(nextOrder);
     setSuccessSummary(null);
   };
 
   const handleSelectTopPlayed = () => {
     const sortedByPlays = [...candidates].sort((a, b) => b.play_count - a.play_count || b.last_played_unix - a.last_played_unix);
-    const next = new Set<string>();
+    const nextKeys = new Set<string>();
+    const nextOrder: string[] = [];
     const limit = Math.min(quickSelectCount, sortedByPlays.length);
     for (let i = 0; i < limit; i++) {
-      next.add(sortedByPlays[i].track_key);
+      nextKeys.add(sortedByPlays[i].track_key);
+      nextOrder.push(sortedByPlays[i].track_key);
     }
-    setSelectedKeys(next);
+    setSelectedKeys(nextKeys);
+    setSelectedOrder(nextOrder);
     setSuccessSummary(null);
   };
 
   const handleSelectMostRecent = () => {
     const sortedByRecent = [...candidates].sort((a, b) => b.last_played_unix - a.last_played_unix);
-    const next = new Set<string>();
+    const nextKeys = new Set<string>();
+    const nextOrder: string[] = [];
     const limit = Math.min(quickSelectCount, sortedByRecent.length);
     for (let i = 0; i < limit; i++) {
-      next.add(sortedByRecent[i].track_key);
+      nextKeys.add(sortedByRecent[i].track_key);
+      nextOrder.push(sortedByRecent[i].track_key);
     }
-    setSelectedKeys(next);
+    setSelectedKeys(nextKeys);
+    setSelectedOrder(nextOrder);
     setSuccessSummary(null);
   };
 
@@ -114,23 +128,29 @@ function App() {
       const scoreB = b.play_count / (b.popularity || 1);
       return scoreB - scoreA || b.last_played_unix - a.last_played_unix;
     });
-    const next = new Set<string>();
+    const nextKeys = new Set<string>();
+    const nextOrder: string[] = [];
     const limit = Math.min(quickSelectCount, sortedByUnderrated.length);
     for (let i = 0; i < limit; i++) {
-      next.add(sortedByUnderrated[i].track_key);
+      nextKeys.add(sortedByUnderrated[i].track_key);
+      nextOrder.push(sortedByUnderrated[i].track_key);
     }
-    setSelectedKeys(next);
+    setSelectedKeys(nextKeys);
+    setSelectedOrder(nextOrder);
     setSuccessSummary(null);
   };
 
   const handleSelectRandom = () => {
     const shuffled = [...candidates].sort(() => 0.5 - Math.random());
-    const next = new Set<string>();
+    const nextKeys = new Set<string>();
+    const nextOrder: string[] = [];
     const limit = Math.min(quickSelectCount, shuffled.length);
     for (let i = 0; i < limit; i++) {
-      next.add(shuffled[i].track_key);
+      nextKeys.add(shuffled[i].track_key);
+      nextOrder.push(shuffled[i].track_key);
     }
-    setSelectedKeys(next);
+    setSelectedKeys(nextKeys);
+    setSelectedOrder(nextOrder);
     setSuccessSummary(null);
   };
 
@@ -146,28 +166,32 @@ function App() {
       .filter(c => c.artist === topArtist)
       .sort((a, b) => b.play_count - a.play_count || b.last_played_unix - a.last_played_unix);
 
-    const next = new Set<string>();
+    const nextKeys = new Set<string>();
+    const nextOrder: string[] = [];
     const limit = Math.min(quickSelectCount, artistTracks.length);
     for (let i = 0; i < limit; i++) {
-      next.add(artistTracks[i].track_key);
+      nextKeys.add(artistTracks[i].track_key);
+      nextOrder.push(artistTracks[i].track_key);
     }
 
-    if (next.size < quickSelectCount) {
+    if (nextKeys.size < quickSelectCount) {
       const nextArtists = Object.keys(artistPlays)
         .sort((a, b) => artistPlays[b] - artistPlays[a])
         .slice(1);
       for (const otherArtist of nextArtists) {
-        if (next.size >= quickSelectCount) break;
+        if (nextKeys.size >= quickSelectCount) break;
         const otherTracks = candidates
           .filter(c => c.artist === otherArtist)
           .sort((a, b) => b.play_count - a.play_count);
         for (const t of otherTracks) {
-          if (next.size >= quickSelectCount) break;
-          next.add(t.track_key);
+          if (nextKeys.size >= quickSelectCount) break;
+          nextKeys.add(t.track_key);
+          nextOrder.push(t.track_key);
         }
       }
     }
-    setSelectedKeys(next);
+    setSelectedKeys(nextKeys);
+    setSelectedOrder(nextOrder);
     setSuccessSummary(null);
   };
 
@@ -183,33 +207,55 @@ function App() {
       .filter(c => c.primary_bucket === topGenre)
       .sort((a, b) => b.play_count - a.play_count || b.last_played_unix - a.last_played_unix);
 
-    const next = new Set<string>();
+    const nextKeys = new Set<string>();
+    const nextOrder: string[] = [];
     const limit = Math.min(quickSelectCount, genreTracks.length);
     for (let i = 0; i < limit; i++) {
-      next.add(genreTracks[i].track_key);
+      nextKeys.add(genreTracks[i].track_key);
+      nextOrder.push(genreTracks[i].track_key);
     }
 
-    if (next.size < quickSelectCount) {
+    if (nextKeys.size < quickSelectCount) {
       const nextGenres = Object.keys(genrePlays)
         .sort((a, b) => genrePlays[b] - genrePlays[a])
         .slice(1);
       for (const otherGenre of nextGenres) {
-        if (next.size >= quickSelectCount) break;
+        if (nextKeys.size >= quickSelectCount) break;
         const otherTracks = candidates
           .filter(c => c.primary_bucket === otherGenre)
           .sort((a, b) => b.play_count - a.play_count);
         for (const t of otherTracks) {
-          if (next.size >= quickSelectCount) break;
-          next.add(t.track_key);
+          if (nextKeys.size >= quickSelectCount) break;
+          nextKeys.add(t.track_key);
+          nextOrder.push(t.track_key);
         }
       }
     }
-    setSelectedKeys(next);
+    setSelectedKeys(nextKeys);
+    setSelectedOrder(nextOrder);
     setSuccessSummary(null);
+  };
+
+  const handleReplaceTrack = (oldKey: string, newKey: string) => {
+    const nextKeys = new Set(selectedKeys);
+    nextKeys.delete(oldKey);
+    nextKeys.add(newKey);
+    setSelectedKeys(nextKeys);
+
+    setSelectedOrder(prev => prev.map(key => key === oldKey ? newKey : key));
+    setSuccessSummary(null);
+  };
+
+  const handleReplaceWithRandom = (oldKey: string) => {
+    const unselected = candidates.filter(c => !selectedKeys.has(c.track_key));
+    if (unselected.length === 0) return;
+    const randomTrack = unselected[Math.floor(Math.random() * unselected.length)];
+    handleReplaceTrack(oldKey, randomTrack.track_key);
   };
 
   const handleClearSelection = () => {
     setSelectedKeys(new Set());
+    setSelectedOrder([]);
     setSuccessSummary(null);
   };
 
@@ -221,7 +267,9 @@ function App() {
     setSlideUrls([]);
 
     // Map selected keys to the original track objects in selection order
-    const selectedTracks = sortedList.filter(c => selectedKeys.has(c.track_key));
+    const selectedTracks = selectedOrder
+      .map(key => candidates.find(c => c.track_key === key))
+      .filter((c): c is Candidate => c !== undefined);
 
     try {
       const resp = await fetch(`${apiBase}/api/generate`, {
@@ -497,6 +545,109 @@ function App() {
               </button>
             </div>
           </div>
+
+          {selectedOrder.length > 0 && (
+            <div className="bg-[#161920] border border-gray-800 rounded-2xl p-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-bold text-gray-200 uppercase tracking-wider">
+                  Selected Tracks ({selectedOrder.length})
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  className="text-[10px] text-red-400 hover:text-red-300 font-bold uppercase transition-colors"
+                >
+                  Clear All
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2.5 max-h-[300px] overflow-y-auto pr-1">
+                {selectedOrder.map((key, index) => {
+                  const track = candidates.find(c => c.track_key === key);
+                  if (!track) return null;
+
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center gap-2.5 bg-gray-900/60 border border-gray-850 p-2 rounded-xl text-xs"
+                    >
+                      {/* Selection Index */}
+                      <span className="text-[10px] font-mono text-gray-500 w-4 shrink-0 text-right font-semibold">
+                        {index + 1}
+                      </span>
+
+                      {/* Album Art */}
+                      <div className="w-8 h-8 rounded-md overflow-hidden shrink-0 border border-gray-800">
+                        {track.album_art_url ? (
+                          <img
+                            src={track.album_art_url.startsWith('http') ? track.album_art_url : `${apiBase}${track.album_art_url}`}
+                            alt={track.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gray-850 flex items-center justify-center text-gray-600 text-[10px]">
+                            🎵
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Details */}
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-white truncate text-[11px]" title={track.title}>
+                          {track.title}
+                        </div>
+                        <div className="text-gray-400 truncate text-[10px]" title={track.artist}>
+                          {track.artist}
+                        </div>
+                      </div>
+
+                      {/* Action buttons wrapper */}
+                      <div className="flex items-center gap-1.5 shrink-0 select-none">
+                        {/* Replace with custom select */}
+                        <select
+                          onChange={(e) => {
+                            const newKey = e.target.value;
+                            if (newKey) handleReplaceTrack(key, newKey);
+                          }}
+                          className="bg-gray-850 text-[10px] border border-gray-700 rounded px-1 py-0.5 text-gray-300 focus:outline-none max-w-[80px]"
+                          value=""
+                        >
+                          <option value="" disabled>Swap</option>
+                          {candidates
+                            .filter(c => !selectedKeys.has(c.track_key))
+                            .map(c => (
+                              <option key={c.track_key} value={c.track_key}>
+                                {c.artist} - {c.title}
+                              </option>
+                            ))}
+                        </select>
+
+                        {/* Replace with random */}
+                        <button
+                          type="button"
+                          onClick={() => handleReplaceWithRandom(key)}
+                          className="p-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-[10px]"
+                          title="Replace with random song"
+                        >
+                          🎲
+                        </button>
+
+                        {/* Remove */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSelect(key)}
+                          className="p-1 rounded bg-red-950/40 hover:bg-red-900/40 text-red-400 text-[10px]"
+                          title="Remove track"
+                        >
+                          ❌
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Action box */}
           <div className="bg-[#161920] border border-gray-800 rounded-2xl p-5 flex flex-col gap-4">
