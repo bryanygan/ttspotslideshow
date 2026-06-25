@@ -66,7 +66,9 @@ def log_recent_plays() -> int:
     db.init_db()
     sp = get_client()
 
-    after = db.latest_played_at()
+    # Scope the cursor to our own (Spotify) plays: the Last.fm import holds newer
+    # timestamps, and an unscoped max would skip Spotify plays since the last run.
+    after = db.latest_played_at(source="spotify")
     after_ms = _iso_to_unix_ms(after) if after else None
 
     # recently-played returns the most recent plays (max 50). 'after' limits the
