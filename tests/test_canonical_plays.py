@@ -1,14 +1,6 @@
-import sqlite3
 from datetime import datetime, timezone
 
 import db
-
-
-def _conn():
-    c = sqlite3.connect(":memory:")
-    c.row_factory = sqlite3.Row
-    db.migrate(c)
-    return c
 
 
 def _iso(u):
@@ -30,8 +22,7 @@ def _lastfm(conn, artist, name, unix):
     )
 
 
-def test_cross_source_pair_within_window_collapses_to_spotify():
-    conn = _conn()
+def test_cross_source_pair_within_window_collapses_to_spotify(conn):
     _spotify(conn, "Carti", "Location", 1000)
     _lastfm(conn, "carti", "location", 1050)  # +50s, normalized-equal
     rows = db.canonical_plays(conn, window_seconds=120)
@@ -39,10 +30,9 @@ def test_cross_source_pair_within_window_collapses_to_spotify():
     assert rows[0]["source"] == "spotify"
 
 
-def test_lastfm_first_then_spotify_still_collapses_to_spotify():
+def test_lastfm_first_then_spotify_still_collapses_to_spotify(conn):
     # Same pair, but the Last.fm row is logged with the EARLIER timestamp, so it is
     # iterated first. The later Spotify row must still win (replace it in-place).
-    conn = _conn()
     _lastfm(conn, "carti", "location", 1000)
     _spotify(conn, "Carti", "Location", 1050)  # +50s, normalized-equal
     rows = db.canonical_plays(conn, window_seconds=120)
@@ -50,34 +40,30 @@ def test_lastfm_first_then_spotify_still_collapses_to_spotify():
     assert rows[0]["source"] == "spotify"
 
 
-def test_cross_source_pair_outside_window_kept_separate():
-    conn = _conn()
+def test_cross_source_pair_outside_window_kept_separate(conn):
     _spotify(conn, "Carti", "Location", 1000)
     _lastfm(conn, "Carti", "Location", 1000 + 200)
     rows = db.canonical_plays(conn, window_seconds=120)
     assert len(rows) == 2
 
 
-def test_same_source_repeat_preserved():
-    conn = _conn()
+def test_same_source_repeat_preserved(conn):
     _lastfm(conn, "Carti", "Location", 1000)
     _lastfm(conn, "Carti", "Location", 1000 + 3600)
     rows = db.canonical_plays(conn, window_seconds=120)
     assert len(rows) == 2
 
 
-def test_different_songs_same_second_both_kept():
-    conn = _conn()
+def test_different_songs_same_second_both_kept(conn):
     _spotify(conn, "Carti", "Location", 1000)
     _lastfm(conn, "Yeat", "Money", 1000)
     rows = db.canonical_plays(conn, window_seconds=120)
     assert len(rows) == 2
 
 
-def test_since_unix_keeps_boundary_twin_dedup():
+def test_since_unix_keeps_boundary_twin_dedup(conn):
     # A Last.fm twin just before the window must still let the in-window Spotify
     # row win (the look-back buffer makes this dedup correct).
-    conn = _conn()
     X = 100_000
     _lastfm(conn, "carti", "location", X - 50)   # buffer (within window_seconds)
     _spotify(conn, "Carti", "Location", X + 10)  # in-window, same track
@@ -87,8 +73,7 @@ def test_since_unix_keeps_boundary_twin_dedup():
     assert rows[0]["played_at_unix"] == X + 10
 
 
-def test_since_unix_excludes_pre_window_rows():
-    conn = _conn()
+def test_since_unix_excludes_pre_window_rows(conn):
     X = 100_000
     _lastfm(conn, "A", "old", X - 500)   # well before the window
     _lastfm(conn, "B", "new", X + 5)

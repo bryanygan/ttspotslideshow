@@ -1,17 +1,9 @@
-import sqlite3
 from contextlib import contextmanager
 
 import spotipy
 
 import db
 import logger
-
-
-def _conn():
-    c = sqlite3.connect(":memory:")
-    c.row_factory = sqlite3.Row
-    db.migrate(c)
-    return c
 
 
 # --- pure helpers ---------------------------------------------------------
@@ -45,12 +37,11 @@ class FakeArtistSpotify:
         return {"genres": self.genres_by_id.get(artist_id, [])}
 
 
-def test_resolve_genre_unknown_without_artist_id():
-    assert logger._resolve_genre(FakeArtistSpotify(), _conn(), None, "X") == "unknown"
+def test_resolve_genre_unknown_without_artist_id(conn):
+    assert logger._resolve_genre(FakeArtistSpotify(), conn, None, "X") == "unknown"
 
 
-def test_resolve_genre_fetches_then_serves_from_cache():
-    conn = _conn()
+def test_resolve_genre_fetches_then_serves_from_cache(conn):
     sp = FakeArtistSpotify({"a1": ["rage", "trap"]})
     assert logger._resolve_genre(sp, conn, "a1", "Carti") == "rage"
     assert sp.calls == 1
@@ -60,8 +51,7 @@ def test_resolve_genre_fetches_then_serves_from_cache():
     assert sp_boom.calls == 0
 
 
-def test_resolve_genre_handles_spotify_exception_and_caches_empty():
-    conn = _conn()
+def test_resolve_genre_handles_spotify_exception_and_caches_empty(conn):
     sp = FakeArtistSpotify(raise_on={"a1"})
     assert logger._resolve_genre(sp, conn, "a1", "Carti") == "unknown"
     # An empty-genre artist is cached as '' so we don't refetch it forever.
@@ -79,10 +69,9 @@ class FakeRecentSpotify(FakeArtistSpotify):
         return {"items": self.items}
 
 
-def test_latest_played_at_is_source_scoped(monkeypatch):
+def test_latest_played_at_is_source_scoped(conn, monkeypatch):
     # The Last.fm import holds newer timestamps than the last Spotify play; the
     # logger's cursor must ignore them or it skips real Spotify plays.
-    conn = _conn()
     db.insert_play(
         conn, track_id="s1", name="S", artist="A", artist_id="a",
         artist_genre=None, album_art_url="", popularity=None,
@@ -102,8 +91,7 @@ def test_latest_played_at_is_source_scoped(monkeypatch):
     assert db.latest_played_at() == "2026-06-25T00:00:00+00:00"  # unscoped = newer
 
 
-def test_log_recent_plays_inserts_and_is_idempotent(monkeypatch):
-    conn = _conn()
+def test_log_recent_plays_inserts_and_is_idempotent(conn, monkeypatch):
     items = [{
         "track": {
             "id": "t1", "name": "Song",
