@@ -10,12 +10,16 @@ Usage:
 """
 
 import argparse
+import logging
 from datetime import datetime, timezone
 
 import spotipy
 
 import db
 from spotify_client import get_client
+from logsetup import setup_logging
+
+LOG = logging.getLogger("logger")
 
 
 def _iso_to_unix_ms(iso_ts: str) -> int:
@@ -113,15 +117,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    setup_logging("logger")
+
     if args.auth:
         get_client().current_user()  # forces the login/token exchange
-        print("Authenticated. Token cached -> future runs won't prompt.")
+        LOG.info("Authenticated. Token cached -> future runs won't prompt.")
         return
 
     added = log_recent_plays()
     total = db.play_count()
-    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    print(f"[{stamp}] Added {added} new play(s). Total logged: {total}.")
+    LOG.info("Added %d new play(s). Total logged: %d.", added, total)
 
 
 if __name__ == "__main__":
