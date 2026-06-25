@@ -34,3 +34,19 @@ def test_record_again_increments_and_updates_date():
     ).fetchone()
     assert row["last_featured_date"] == "2026-06-26"
     assert row["times_featured"] == 2
+
+
+def test_migrate_cleans_up_recap_dates():
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    c.execute(
+        "CREATE TABLE featured_tracks (track_key TEXT PRIMARY KEY, last_featured_date TEXT NOT NULL, times_featured INTEGER NOT NULL)"
+    )
+    c.execute(
+        "INSERT INTO featured_tracks (track_key, last_featured_date, times_featured) VALUES (?, ?, ?)",
+        ("test_track", "recap-2026-06-25", 1)
+    )
+    c.commit()
+    db.migrate(c)
+    row = c.execute("SELECT last_featured_date FROM featured_tracks WHERE track_key = 'test_track'").fetchone()
+    assert row["last_featured_date"] == "2026-06-25"

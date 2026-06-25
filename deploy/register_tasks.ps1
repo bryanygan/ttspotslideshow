@@ -21,7 +21,7 @@ $Repo   = (Resolve-Path "$PSScriptRoot\..").Path
 $Python = Join-Path $Repo ".venv\Scripts\python.exe"
 
 if (-not (Test-Path $Python)) {
-    throw "venv python not found at $Python — create the venv first (see deploy\DEPLOY.md)."
+    throw "venv python not found at $Python - create the venv first (see deploy\DEPLOY.md)."
 }
 Write-Host "Repo:   $Repo"
 Write-Host "Python: $Python`n"

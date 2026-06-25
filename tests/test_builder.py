@@ -167,3 +167,35 @@ def test_disperse_tracks():
     assert s1_artists.count("Artist B") == 2
     assert s2_artists.count("Artist A") == 2
     assert s2_artists.count("Artist B") == 2
+
+
+def test_build_uses_manual_overrides(tmp_path, monkeypatch):
+    import render.art as rart
+    conn = _conn()
+    for i in range(4):
+        db.insert_lastfm_play(
+            conn, track_id="", name=f"Song{i}", artist=f"Artist{i}",
+            album_art_url=f"https://lastfm/{i}.jpg",
+            played_at=_iso(NOW - DAY), played_at_unix=NOW - DAY,
+        )
+
+    overrides_dir = tmp_path / "overrides"
+    overrides_dir.mkdir()
+    override_file = overrides_dir / "Artist0 - Song0.png"
+    Image.new("RGB", (300, 300), (0, 255, 0)).save(override_file)
+
+    fetch_calls = []
+    def mock_fetch(url, dest):
+        fetch_calls.append(url)
+        Image.new("RGB", (300, 300), (90, 90, 90)).save(dest)
+
+    monkeypatch.setattr(rart, "_default_fetch", mock_fetch)
+
+    summary = build_slideshow(
+        conn, out_root=tmp_path / "out", target=4, floor=4,
+        now_unix=NOW, today="2026-06-24", fetch=lambda url: '{"results": []}',
+        cache_dir=tmp_path / "art", overrides_dir=overrides_dir,
+    )
+
+    # 3 of the 4 tracks should trigger fetch, since Artist0 - Song0 is overridden
+    assert len(fetch_calls) == 3

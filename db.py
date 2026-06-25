@@ -105,6 +105,10 @@ def migrate(conn: sqlite3.Connection) -> None:
     conn.execute(CREATE_ARTIST_GENRES)
     conn.execute(CREATE_ARTISTS)
     conn.execute(CREATE_FEATURED)
+    conn.execute(
+        "UPDATE featured_tracks SET last_featured_date = REPLACE(last_featured_date, 'recap-', '') "
+        "WHERE last_featured_date LIKE 'recap-%'"
+    )
     conn.executescript(CREATE_INDEXES)
 
 

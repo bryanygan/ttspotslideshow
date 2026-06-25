@@ -232,6 +232,13 @@ spread.
 Then post the slides to TikTok manually (TikTok has no clean posting API for personal
 accounts — image generation is automated, the ~30-second upload is not).
 
+### Manual Album Art Overrides
+
+If a track has missing (placeholder) album art or incorrect artwork, you can manually override it:
+1. Put the image in `data/art_overrides/`.
+2. Name the file `Artist Name - Song Title.ext` (e.g., `Tiffany Day - American Girl.png` or `Jane Remover - Flash in the Pan.jpg`). Supported extensions are `.png`, `.jpg`, `.jpeg`, and `.webp`.
+3. The matching is case-insensitive and flexible with spacing/underscores (e.g., `tiffany_day_-_american_girl.jpg` will also match).
+
 ### Screenshot OCR Playlist Ingest (Optional)
 
 If you have a playlist or queue screenshot from Spotify or Apple Music, you can run the built-in Windows OCR pipeline to read the song names and artists from the image, match them to high-resolution artwork, and compile them into a slideshow:

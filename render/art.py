@@ -43,3 +43,57 @@ def load_art(
         return None
 
     return dest if dest.exists() else None
+
+
+def find_override_art(
+    artist: str,
+    title: str,
+    overrides_dir: Optional[Path] = None,
+) -> Optional[Path]:
+    """Search for a manual album art override in overrides_dir.
+
+    Supported formats in the overrides directory:
+    - 'Artist - Title.png/jpg/jpeg/webp'
+    - 'artist - title.png/jpg/jpeg/webp'
+    - 'artist_-_title.png/jpg/jpeg/webp' (with underscores)
+    - 'artist_title.png/jpg/jpeg/webp' (concatenated)
+
+    Returns the Path to the override file if found, otherwise None.
+    """
+    import config
+    from text_norm import normalize
+
+    folder = Path(overrides_dir) if overrides_dir is not None else config.ART_OVERRIDES_DIR
+    if not folder.exists():
+        return None
+
+    norm_artist = normalize(artist)
+    norm_title = normalize(title)
+    if not norm_artist or not norm_title:
+        return None
+
+    target_combined = normalize(f"{artist} - {title}")
+
+    # Check each file in the overrides folder
+    for path in folder.iterdir():
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
+            continue
+
+        stem = path.stem
+        # Normalize underscores, dashes, tabs to spaces for flexible matching
+        stem_spaced = stem.replace("_", " ").replace("-", " ").replace("\t", " ")
+        norm_stem = normalize(stem_spaced)
+
+        # Match target_combined or normalized key space-separated
+        if norm_stem == target_combined or norm_stem == normalize(f"{norm_artist} {norm_title}"):
+            return path
+
+        # Try matching by splitting on a dash in the original filename if present
+        if " - " in stem:
+            parts = stem.split(" - ", 1)
+            if normalize(parts[0]) == norm_artist and normalize(parts[1]) == norm_title:
+                return path
+
+    return None

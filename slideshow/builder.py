@@ -7,7 +7,7 @@ import db
 from slideshow.window import resolve_window
 from slideshow.selector import select_tracks
 from slideshow.art_resolve import resolve_art_url
-from render.art import load_art
+from render.art import load_art, find_override_art
 from render.card import render_card
 from render.collage import collage
 
@@ -75,7 +75,7 @@ def disperse_tracks(
     return flat
 
 
-def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir):
+def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir, overrides_dir=None):
     """Resolve art, render cards, write 4-up slides, and record featured tracks.
 
     Returns (slide_count, genre_spread). Shared by build_slideshow and
@@ -86,8 +86,13 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir):
     art_cache: dict[str, str] = {}
     cards = []
     for track in rendered:
-        url = resolve_art_url(track, fetch=fetch, cache=art_cache)
-        art_path = load_art(url, cache_dir)
+        # Check manual overrides first
+        override_path = find_override_art(track["artist"], track["title"], overrides_dir)
+        if override_path:
+            art_path = override_path
+        else:
+            url = resolve_art_url(track, fetch=fetch, cache=art_cache)
+            art_path = load_art(url, cache_dir)
         cards.append(render_card(track, art_path=art_path))
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -106,7 +111,7 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir):
 
 
 def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
-                    today=None, fetch=None, cache_dir=None) -> dict:
+                    today=None, fetch=None, cache_dir=None, overrides_dir=None) -> dict:
     """Build the dated slide set. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -132,7 +137,7 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
         return summary
 
     slide_count, spread = _render_and_save(
-        conn, rendered, out_dir, run_date, fetch, cache_dir
+        conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
@@ -140,7 +145,7 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
 
 
 def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
-                          fetch=None, cache_dir=None) -> dict:
+                          fetch=None, cache_dir=None, overrides_dir=None) -> dict:
     """Build slides for specific selected tracks. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -164,7 +169,7 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
     # novelty check parses last_featured_date with date.fromisoformat(), so a
     # "recap-..." string here would crash the next regular build.
     slide_count, spread = _render_and_save(
-        conn, rendered, out_dir, run_date, fetch, cache_dir
+        conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread

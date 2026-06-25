@@ -32,6 +32,7 @@ LASTFM_USER = os.getenv("LAST_FM_USER")
 # --- Local file paths ---
 DATA_DIR = PROJECT_ROOT / "data"
 DB_PATH = DATA_DIR / "plays.db"
+ART_OVERRIDES_DIR = DATA_DIR / "art_overrides"
 
 # Where spotipy caches the OAuth token so you only log in once.
 TOKEN_CACHE_PATH = PROJECT_ROOT / ".spotify_cache"
@@ -40,6 +41,7 @@ TOKEN_CACHE_PATH = PROJECT_ROOT / ".spotify_cache"
 def ensure_dirs() -> None:
     """Create local directories that must exist before we read/write data."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    ART_OVERRIDES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def assert_credentials() -> None:
