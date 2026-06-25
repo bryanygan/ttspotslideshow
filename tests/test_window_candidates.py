@@ -1,17 +1,9 @@
-import sqlite3
+from datetime import datetime, timezone
 
 import db
 
 
-def _conn():
-    c = sqlite3.connect(":memory:")
-    c.row_factory = sqlite3.Row
-    db.migrate(c)
-    return c
-
-
 def _iso(u):
-    from datetime import datetime, timezone
     return datetime.fromtimestamp(u, timezone.utc).isoformat()
 
 
@@ -22,8 +14,7 @@ def _lastfm(conn, artist, name, unix, art=""):
     )
 
 
-def test_aggregates_counts_and_window_filter():
-    conn = _conn()
+def test_aggregates_counts_and_window_filter(conn):
     _lastfm(conn, "Carti", "Location", 1000)
     _lastfm(conn, "Carti", "Location", 1500)   # same track, in window -> count 2
     _lastfm(conn, "Yeat", "Money", 500)        # before window -> excluded
@@ -34,16 +25,14 @@ def test_aggregates_counts_and_window_filter():
     assert by_key["carti\tlocation"]["last_played_unix"] == 1500
 
 
-def test_start_unix_boundary_is_inclusive():
-    conn = _conn()
+def test_start_unix_boundary_is_inclusive(conn):
     _lastfm(conn, "Carti", "Edge", 1000)       # exactly at start -> included
     _lastfm(conn, "Carti", "Before", 999)      # one second before -> excluded
     cands = {c["track_key"] for c in db.window_track_candidates(conn, start_unix=1000)}
     assert cands == {"carti\tedge"}
 
 
-def test_joins_primary_bucket_and_defaults_unknown():
-    conn = _conn()
+def test_joins_primary_bucket_and_defaults_unknown(conn):
     db.upsert_artist_genre(
         conn, artist_key="carti", display_name="Carti", spotify_artist_id="",
         raw_genres="rage", lastfm_tags="", primary_bucket="rage",
