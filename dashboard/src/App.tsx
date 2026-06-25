@@ -130,6 +130,48 @@ function App() {
     }
   };
 
+  const handleUploadArt = async (track: Candidate, event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+
+    setError(null);
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': file.type,
+        'X-Artist': encodeURIComponent(track.artist),
+        'X-Title': encodeURIComponent(track.title),
+      };
+
+      const resp = await fetch(`${apiBase}/api/overrides/upload`, {
+        method: 'POST',
+        headers: headers,
+        body: file,
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Upload failed: ${resp.statusText}`);
+      }
+
+      const data = await resp.json();
+
+      // Update candidates list to show the new custom cover art immediately
+      setCandidates(prev =>
+        prev.map(c => {
+          if (c.track_key === track.track_key) {
+            return {
+              ...c,
+              album_art_url: `${data.url}?t=${Date.now()}`
+            };
+          }
+          return c;
+        })
+      );
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload custom artwork.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0f1115] text-gray-100 flex flex-col selection:bg-purple-500 selection:text-white">
       {/* Header */}
@@ -519,21 +561,43 @@ function App() {
                           {index + 1}
                         </span>
 
-                        {/* Cover */}
-                        {track.album_art_url ? (
-                          <img
-                            src={track.album_art_url}
-                            alt={track.title}
-                            className="w-12 h-12 rounded-lg object-cover shadow border border-gray-800 shrink-0"
-                            onError={e => {
-                              (e.target as HTMLElement).style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-500 font-bold text-xs shrink-0 select-none">
-                            🎵
+                        {/* Cover image with manual upload overlay */}
+                        <div
+                          className="relative w-12 h-12 rounded-lg border border-gray-800 overflow-hidden shrink-0 group/cover cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation(); // prevent selecting/toggling track row
+                            document.getElementById(`file-input-${track.track_key.replace(/\s+/g, '_')}`)?.click();
+                          }}
+                          title="Click to replace album art"
+                        >
+                          {track.album_art_url ? (
+                            <img
+                              src={track.album_art_url.startsWith('http') ? track.album_art_url : `${apiBase}${track.album_art_url}`}
+                              alt={track.title}
+                              className="w-full h-full object-cover"
+                              onError={e => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gray-800 flex items-center justify-center text-gray-500 font-bold text-xs select-none">
+                              🎵
+                            </div>
+                          )}
+                          {/* Premium Hover/Tap Overlay */}
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/cover:opacity-100 transition-opacity flex items-center justify-center text-[10px] text-white font-bold select-none">
+                            Edit
                           </div>
-                        )}
+
+                          {/* Hidden File Input */}
+                          <input
+                            type="file"
+                            id={`file-input-${track.track_key.replace(/\s+/g, '_')}`}
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => handleUploadArt(track, e)}
+                          />
+                        </div>
 
                         {/* Title & Artist */}
                         <div className="min-w-0 flex-1">

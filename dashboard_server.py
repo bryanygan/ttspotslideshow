@@ -3,7 +3,8 @@ import sys
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
+from render.art import find_override_art
 
 import config
 import db
@@ -16,7 +17,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # Inject CORS headers on every response
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Artist, X-Title")
         super().end_headers()
 
     def do_OPTIONS(self):
@@ -29,6 +30,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_get_candidates(parsed)
         elif parsed.path.startswith("/api/slides/"):
             self.handle_get_slide(parsed)
+        elif parsed.path.startswith("/api/overrides/"):
+            self.handle_get_override(parsed)
         else:
             self.handle_static_files(parsed)
 
@@ -36,6 +39,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/generate":
             self.handle_post_generate()
+        elif parsed.path == "/api/overrides/upload":
+            self.handle_post_override_upload()
         else:
             self.send_error(404, "Not Found")
 
@@ -78,11 +83,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-        # Decorate candidates with popularity and last_featured details
+        # Decorate candidates with popularity, last_featured, and overrides details
         for c in candidates:
             tid = c.get("track_id")
             c["popularity"] = popularities.get(tid, 50)
             c["last_featured"] = featured.get(c["track_key"], None)
+
+            # Check for manual cover art overrides
+            override_path = find_override_art(c["artist"], c["title"])
+            if override_path:
+                c["album_art_url"] = f"/api/overrides/{override_path.name}"
 
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -173,6 +183,92 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         with open(file_path, "rb") as f:
             self.wfile.write(f.read())
+
+    def handle_get_override(self, parsed):
+        """Serve a manual art override image from data/art_overrides/<file>."""
+        rel = parsed.path[len("/api/overrides/"):]
+        overrides_root = config.ART_OVERRIDES_DIR.resolve()
+        file_path = (overrides_root / rel).resolve()
+
+        if not file_path.is_relative_to(overrides_root) or not file_path.exists() or file_path.is_dir():
+            self.send_error(404, "Not Found")
+            return
+
+        ext = file_path.suffix.lower()
+        mime_types = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }
+        mime = mime_types.get(ext, "image/jpeg")
+
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(file_path.stat().st_size))
+        self.end_headers()
+        with open(file_path, "rb") as f:
+            self.wfile.write(f.read())
+
+    def handle_post_override_upload(self):
+        """Accept raw binary image and save it as a manual art override."""
+        artist_raw = self.headers.get("X-Artist", "")
+        title_raw = self.headers.get("X-Title", "")
+
+        artist = unquote(artist_raw)
+        title = unquote(title_raw)
+
+        if not artist or not title:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "X-Artist and X-Title headers are required"}).encode("utf-8"))
+            return
+
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length <= 0:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Empty file payload"}).encode("utf-8"))
+            return
+
+        file_data = self.rfile.read(content_length)
+
+        # Detect extension from Content-Type
+        content_type = self.headers.get("Content-Type", "").lower()
+        ext = ".jpg"
+        if "image/png" in content_type:
+            ext = ".png"
+        elif "image/webp" in content_type:
+            ext = ".webp"
+        elif "image/jpeg" in content_type:
+            ext = ".jpg"
+
+        # Sanitize filename (illegal Windows chars: \ / : * ? " < > |)
+        safe_artist = "".join(c for c in artist if c not in r'\/:*?"<>|').strip()
+        safe_title = "".join(c for c in title if c not in r'\/:*?"<>|').strip()
+
+        filename = f"{safe_artist} - {safe_title}{ext}"
+        dest = config.ART_OVERRIDES_DIR / filename
+
+        try:
+            config.ART_OVERRIDES_DIR.mkdir(parents=True, exist_ok=True)
+            with open(dest, "wb") as f:
+                f.write(file_data)
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": f"Failed to save file: {e}"}).encode("utf-8"))
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(
+            json.dumps({"status": "success", "filename": filename, "url": f"/api/overrides/{filename}"}).encode("utf-8")
+        )
 
     def handle_static_files(self, parsed):
         dist_dir = Path("dashboard") / "dist"
