@@ -12,6 +12,69 @@ from render.card import render_card
 from render.collage import collage
 
 
+def disperse_tracks(
+    tracks: list[dict],
+    slide_size: int = 4,
+    max_artist: int = 1,
+    max_album: int = 1,
+) -> list[dict]:
+    """Reorder tracks so that no slide contains more than max_artist from the same artist
+    and no more than max_album from the same album (using album_art_url as proxy).
+    """
+    num_slides = len(tracks) // slide_size
+    if num_slides <= 1:
+        return tracks
+
+    slides: list[list[dict]] = [[] for _ in range(num_slides)]
+    remaining = list(tracks)
+
+    for slot in range(slide_size):
+        for s_idx in range(num_slides):
+            if not remaining:
+                break
+            slide = slides[s_idx]
+
+            # Find the first track that violates neither constraint
+            best_idx = -1
+            for i, track in enumerate(remaining):
+                artist = track.get("artist")
+                art_url = track.get("album_art_url")
+
+                artist_count = sum(1 for t in slide if t.get("artist") == artist)
+                album_count = sum(
+                    1
+                    for t in slide
+                    if t.get("album_art_url") == art_url and art_url
+                )
+
+                if artist_count < max_artist and album_count < max_album:
+                    best_idx = i
+                    break
+
+            # If no track satisfies both, try to satisfy only the artist constraint
+            if best_idx == -1:
+                for i, track in enumerate(remaining):
+                    artist = track.get("artist")
+                    artist_count = sum(
+                        1 for t in slide if t.get("artist") == artist
+                    )
+                    if artist_count < max_artist:
+                        best_idx = i
+                        break
+
+            # If still nothing, just take the first remaining track
+            if best_idx == -1:
+                best_idx = 0
+
+            slide.append(remaining.pop(best_idx))
+
+    flat = []
+    for s in slides:
+        flat.extend(s)
+    flat.extend(remaining)
+    return flat
+
+
 def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
                     today=None, fetch=None, cache_dir=None) -> dict:
     """Build the dated slide set. Returns a run summary."""
@@ -22,9 +85,10 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
     candidates, days_used = resolve_window(conn, target, floor, now_unix=now_unix)
     featured = db.featured_history(conn)
     tracks = select_tracks(candidates, featured, run_date, target, floor)
+    dispersed = disperse_tracks(tracks)
 
     # Only whole 4-card slides are rendered.
-    rendered = tracks[: (len(tracks) // 4) * 4]
+    rendered = dispersed[: (len(dispersed) // 4) * 4]
 
     summary = {
         "date": run_date,
@@ -73,8 +137,9 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
     out_dir = Path(out_root) / f"recap-{run_date}"
 
+    dispersed = disperse_tracks(tracks)
     # We round down to the nearest multiple of 4, since slides are 4-up.
-    rendered = tracks[: (len(tracks) // 4) * 4]
+    rendered = dispersed[: (len(dispersed) // 4) * 4]
 
     summary = {
         "date": run_date,

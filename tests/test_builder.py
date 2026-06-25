@@ -105,3 +105,28 @@ def test_build_recap_slideshow(tmp_path, monkeypatch):
     assert len(history) == 4
     for t in tracks:
         assert history[t["track_key"]] == "recap-2026-06-25"
+
+
+def test_disperse_tracks():
+    from slideshow.builder import disperse_tracks
+
+    tracks = [
+        {"artist": "Artist A", "album_art_url": "urlA", "title": f"SongA{i}"}
+        for i in range(4)
+    ] + [
+        {"artist": "Artist B", "album_art_url": "urlB", "title": f"SongB{i}"}
+        for i in range(4)
+    ]
+
+    dispersed = disperse_tracks(tracks, slide_size=4, max_artist=1, max_album=1)
+
+    slide1 = dispersed[0:4]
+    slide2 = dispersed[4:8]
+
+    s1_artists = [t["artist"] for t in slide1]
+    s2_artists = [t["artist"] for t in slide2]
+
+    assert s1_artists.count("Artist A") == 2
+    assert s1_artists.count("Artist B") == 2
+    assert s2_artists.count("Artist A") == 2
+    assert s2_artists.count("Artist B") == 2

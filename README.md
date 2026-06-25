@@ -232,6 +232,24 @@ spread.
 Then post the slides to TikTok manually (TikTok has no clean posting API for personal
 accounts — image generation is automated, the ~30-second upload is not).
 
+### Screenshot OCR Playlist Ingest (Optional)
+
+If you have a playlist or queue screenshot from Spotify or Apple Music, you can run the built-in Windows OCR pipeline to read the song names and artists from the image, match them to high-resolution artwork, and compile them into a slideshow:
+
+```powershell
+python -m slideshow.ocr <path_to_screenshot>
+```
+
+Options:
+- `--skip-render`, `-s`: Print identified tracks and artists to terminal without rendering the final slides.
+- `--out-dir <path>`: Override the default slide output directory.
+
+This uses Windows 11's native high-performance OCR engine, requiring **zero extra Python package installations or models to download**.
+
+### Slide Diversity & Dispersion
+
+To keep slideshows engaging, the generator automatically shuffles and disperses selected tracks so that **no single slide (4 cards) contains more than 1 track from the same artist or album** (using the artwork URL as a proxy). If there are too many duplicates, the algorithm falls back to distributing them as evenly as possible across the slides.
+
 ---
 
 ## Phase 4 — Automation (Bi-daily scheduled run)
