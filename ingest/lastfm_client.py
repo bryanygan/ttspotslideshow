@@ -17,9 +17,15 @@ def get_top_tags(
     artist: str,
     api_key: str,
     fetch: Optional[Callable[[str], str]] = None,
-    min_weight: int = 10,
+    min_weight: int = 1,
 ) -> list[str]:
-    """Return lowercased Last.fm top tags for an artist with weight >= min_weight."""
+    """Return lowercased Last.fm top tags for an artist with weight >= min_weight.
+
+    The default floor is deliberately low (1) because real genre tags can carry
+    small relative weights (e.g. 'plugg'=3). Non-genre tags that come along for the
+    ride are filtered out downstream by ``genre_map.is_genre_noise``; ``bucket_for``
+    only ever picks a *mapped* tag, so weak noise never changes the bucket.
+    """
     params = urllib.parse.urlencode({
         "method": "artist.gettoptags",
         "artist": artist,

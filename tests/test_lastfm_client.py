@@ -24,6 +24,17 @@ def test_returns_lowercased_tags_above_threshold():
     assert "api_key=KEY" in captured["url"]
 
 
+def test_default_min_weight_keeps_low_weight_genre_tags():
+    # Real genre tags can sit below the old hard floor of 10 (e.g. plugg=3);
+    # the default threshold is now low enough to keep them.
+    fake = json.dumps({"toptags": {"tag": [
+        {"name": "Rap", "count": 100},
+        {"name": "plugg", "count": 3},
+    ]}})
+    tags = get_top_tags("x", "KEY", fetch=lambda url: fake)  # default min_weight
+    assert tags == ["rap", "plugg"]
+
+
 def test_handles_missing_tags_gracefully():
     tags = get_top_tags("X", "KEY", fetch=lambda url: json.dumps({"toptags": {}}))
     assert tags == []

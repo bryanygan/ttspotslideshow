@@ -6,7 +6,7 @@ import spotipy
 
 import db
 from text_norm import normalize
-from ingest.genre_map import bucket_for
+from ingest.genre_map import bucket_for, is_genre_noise
 from ingest.lastfm_client import get_top_tags
 
 
@@ -63,7 +63,9 @@ def resolve_artist_genre(name, spotify_client, lastfm_api_key, fetch=None,
             return result
 
     # 2. Last.fm fallback (or primary, when skip_spotify / no usable Spotify genres).
-    tags = get_top_tags(name, lastfm_api_key, fetch=fetch)
+    #    Drop location/decade/meta tags so a noise-only artist stays 'none', not 'other'.
+    tags = [t for t in get_top_tags(name, lastfm_api_key, fetch=fetch)
+            if not is_genre_noise(t)]
     if tags:
         result["lastfm_tags"] = tags
         result["primary_bucket"] = bucket_for(tags)
