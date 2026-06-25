@@ -133,9 +133,9 @@ function App() {
   return (
     <div className="min-h-screen bg-[#0f1115] text-gray-100 flex flex-col selection:bg-purple-500 selection:text-white">
       {/* Header */}
-      <header className="border-b border-gray-800 bg-[#161920]/80 backdrop-blur sticky top-0 z-10 px-6 py-4 flex items-center justify-between">
+      <header className="border-b border-gray-800 bg-[#161920]/80 backdrop-blur sticky top-0 z-10 px-4 py-3 md:px-6 md:py-4 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20 shrink-0">
             <svg
               className="w-6 h-6 text-white"
               fill="none"
@@ -160,9 +160,9 @@ function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 rounded-xl px-3 py-1.5 text-xs">
-            <span className="text-gray-500 font-bold uppercase tracking-wider">Backend API:</span>
+        <div className="flex items-center justify-between md:justify-end gap-3 w-full md:w-auto">
+          <div className="flex-1 md:flex-initial flex items-center justify-between md:justify-start gap-2 bg-gray-900 border border-gray-800 rounded-xl px-3 py-1.5 text-xs">
+            <span className="text-gray-500 font-bold uppercase tracking-wider shrink-0">Backend API:</span>
             <input
               type="text"
               value={apiBase}
@@ -170,7 +170,7 @@ function App() {
                 setApiBase(e.target.value);
                 localStorage.setItem('api_base', e.target.value);
               }}
-              className="bg-transparent text-gray-200 focus:outline-none w-56 font-mono text-[11px]"
+              className="bg-transparent text-gray-200 focus:outline-none w-full md:w-56 font-mono text-[11px]"
               placeholder="http://localhost:8000"
             />
           </div>
@@ -178,7 +178,7 @@ function App() {
             href="https://github.com/bryanygan/ttspotslideshow"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-colors shrink-0"
           >
             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
               <path
@@ -192,9 +192,9 @@ function App() {
       </header>
 
       {/* Main layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Left column (controls / statistics / recap generation) */}
-        <section className="lg:col-span-1 flex flex-col gap-6">
+        <section className="lg:col-span-1 flex flex-col gap-6 lg:sticky lg:top-[88px] lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto pr-1 pb-4">
           <div className="bg-[#161920] border border-gray-800 rounded-2xl p-5 flex flex-col gap-5">
             <h2 className="text-md font-bold text-gray-200 uppercase tracking-wider">
               Recap Controls
@@ -261,7 +261,7 @@ function App() {
                   <button
                     key={num}
                     onClick={() => handleQuickSelect(num)}
-                    className="py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium text-sm transition-colors"
+                    className="py-2 px-1 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold text-xs transition-colors"
                   >
                     Top {num}
                   </button>
@@ -474,8 +474,8 @@ function App() {
             </div>
           ) : (
             <div className="bg-[#161920] border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
-              {/* List Header */}
-              <div className="px-6 py-4 bg-[#1e222b] border-b border-gray-800 text-xs font-bold text-gray-400 uppercase tracking-wider grid grid-cols-12 gap-4 items-center select-none">
+              {/* List Header (Hidden on Mobile) */}
+              <div className="hidden md:grid px-6 py-4 bg-[#1e222b] border-b border-gray-800 text-xs font-bold text-gray-400 uppercase tracking-wider grid-cols-12 gap-4 items-center select-none">
                 <div className="col-span-1 text-center">Select</div>
                 <div className="col-span-6 flex gap-3">Track details</div>
                 <div className="col-span-2 text-center">Genre Bucket</div>
@@ -495,28 +495,31 @@ function App() {
                     <div
                       key={track.track_key}
                       onClick={() => handleToggleSelect(track.track_key)}
-                      className={`px-6 py-3.5 grid grid-cols-12 gap-4 items-center cursor-pointer transition-all hover:bg-[#1f2430] select-none ${
+                      className={`px-4 py-3.5 md:px-6 md:py-3.5 flex flex-col md:grid md:grid-cols-12 gap-3.5 md:gap-4 items-stretch md:items-center cursor-pointer transition-all hover:bg-[#1f2430] select-none ${
                         isSelected ? 'bg-purple-950/20' : ''
                       }`}
                     >
-                      {/* Checkbox */}
-                      <div
-                        className="col-span-1 flex items-center justify-center"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleSelect(track.track_key)}
-                          className="w-5 h-5 accent-purple-600 rounded-md border-gray-600 bg-gray-800 cursor-pointer focus:ring-purple-500"
-                        />
-                      </div>
+                      {/* Checkbox and details wrapper */}
+                      <div className="flex items-center gap-3 md:col-span-7 min-w-0">
+                        {/* Checkbox */}
+                        <div
+                          className="flex items-center justify-center shrink-0"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(track.track_key)}
+                            className="w-5 h-5 accent-purple-600 rounded-md border-gray-600 bg-gray-800 cursor-pointer focus:ring-purple-500"
+                          />
+                        </div>
 
-                      {/* Cover & Details */}
-                      <div className="col-span-6 flex gap-3.5 items-center min-w-0">
-                        <span className="text-xs text-gray-500 font-mono w-4 shrink-0 text-right">
+                        {/* Index */}
+                        <span className="hidden md:inline text-xs text-gray-500 font-mono w-4 shrink-0 text-right">
                           {index + 1}
                         </span>
+
+                        {/* Cover */}
                         {track.album_art_url ? (
                           <img
                             src={track.album_art_url}
@@ -531,6 +534,8 @@ function App() {
                             🎵
                           </div>
                         )}
+
+                        {/* Title & Artist */}
                         <div className="min-w-0 flex-1">
                           <div
                             className="font-bold text-sm text-white truncate pr-2"
@@ -544,37 +549,47 @@ function App() {
                           >
                             {track.artist}
                           </div>
-                          {track.last_featured && (
-                            <div className="inline-flex items-center gap-1 mt-1 text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded px-1.5 py-0.5 font-medium">
-                              Featured {track.last_featured}
-                            </div>
-                          )}
+                          
+                          {/* Badges for mobile: only visible on small screens */}
+                          <div className="flex flex-wrap gap-2 mt-1.5 md:hidden">
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-gray-800 text-gray-300 font-semibold border border-gray-700">
+                              {track.play_count} play{track.play_count !== 1 ? 's' : ''}
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-purple-900/20 text-purple-300 font-semibold border border-purple-800/30">
+                              {track.primary_bucket}
+                            </span>
+                            {track.last_featured && (
+                              <span className="text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded px-2 py-0.5 font-semibold">
+                                Featured {track.last_featured}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Genre Bucket */}
-                      <div className="col-span-2 text-center">
+                      {/* Genre Bucket (hidden on mobile, shown on md+) */}
+                      <div className="hidden md:block md:col-span-2 text-center">
                         <span className="inline-block text-[11px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wide bg-gray-800 text-gray-300 border border-gray-700">
                           {track.primary_bucket}
                         </span>
                       </div>
 
-                      {/* Play Count */}
-                      <div className="col-span-1 text-center font-bold text-sm text-gray-200">
+                      {/* Play Count (hidden on mobile, shown on md+) */}
+                      <div className="hidden md:block md:col-span-1 text-center font-bold text-sm text-gray-200">
                         {track.play_count}
                       </div>
 
-                      {/* Popularity bar */}
-                      <div className="col-span-2 flex flex-col gap-1 items-center justify-center pr-2">
+                      {/* Popularity bar (pl-8 on mobile to align with text) */}
+                      <div className="pl-8 md:pl-0 md:col-span-2 flex flex-col gap-1 items-stretch md:items-center justify-center">
                         <div className="flex items-center justify-between w-full text-[10px] text-gray-400">
-                          <span>Pop: {track.popularity}</span>
+                          <span>Pop: {track.popularity}%</span>
                           {sortBy === 'underrated' && (
                             <span className="text-purple-400 font-bold">
                               Score: {underratedScore}
                             </span>
                           )}
                         </div>
-                        <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                        <div className="w-full bg-gray-850 h-1.5 rounded-full overflow-hidden border border-gray-700">
                           <div
                             className="bg-gradient-to-r from-purple-500 to-pink-500 h-full rounded-full"
                             style={{ width: `${track.popularity}%` }}
