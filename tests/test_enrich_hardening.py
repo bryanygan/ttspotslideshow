@@ -29,6 +29,13 @@ class BadRequestSpotify:
         raise spotipy.SpotifyException(404, -1, "not found")
 
 
+class ExplodingSpotify:
+    """Fails the test if Spotify is called at all (for skip_spotify checks)."""
+
+    def search(self, q, type="artist", limit=1):
+        raise AssertionError("Spotify must not be called when skip_spotify=True")
+
+
 def _play(conn, artist, name, unix):
     db.insert_lastfm_play(
         conn, track_id="", name=name, artist=artist, album_art_url="",
@@ -117,3 +124,52 @@ def test_enrich_all_stops_early_on_rate_limit_then_resumes():
     s2 = enrich_all(conn, RateLimitedSpotify(fail_first=0), "KEY", sleep=lambda s: None)
     assert s2["spotify"] == 5
     assert conn.execute("SELECT COUNT(*) FROM artist_genres").fetchone()[0] == 5
+
+
+def test_skip_spotify_goes_straight_to_lastfm():
+    out = resolve_artist_genre(
+        "X", ExplodingSpotify(), "KEY", skip_spotify=True,
+        fetch=lambda u: '{"toptags": {"tag": [{"name": "trap", "count": 99}]}}',
+    )
+    assert out["genre_source"] == "lastfm"
+    assert out["primary_bucket"] == "trap"
+    assert out["transient"] is False
+
+
+def test_refresh_upgrades_lastfm_to_spotify():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    db.migrate(conn)
+    _play(conn, "2hollis", "S", 1700000000)
+
+    # Pass 1: Last.fm-only caches the artist with genre_source='lastfm'.
+    enrich_all(
+        conn, ExplodingSpotify(), "KEY", skip_spotify=True, sleep=lambda s: None,
+        fetch=lambda u: '{"toptags": {"tag": [{"name": "trap", "count": 99}]}}',
+    )
+    row = db.get_artist_genre(conn, "2hollis")
+    assert row["genre_source"] == "lastfm" and row["primary_bucket"] == "trap"
+
+    # Pass 2: refresh with Spotify reachable -> upgraded to Spotify genres.
+    s = enrich_all(
+        conn, FakeSpotify({"2hollis": ("id1", ["rage"])}), "KEY",
+        refresh=True, sleep=lambda s: None,
+    )
+    assert s["spotify"] == 1
+    row = db.get_artist_genre(conn, "2hollis")
+    assert row["genre_source"] == "spotify" and row["primary_bucket"] == "rage"
+
+
+def test_refresh_leaves_spotify_sourced_artists_alone():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    db.migrate(conn)
+    _play(conn, "2hollis", "S", 1700000000)
+
+    # Cache as Spotify first.
+    enrich_all(conn, FakeSpotify({"2hollis": ("id1", ["rage"])}), "KEY",
+               sleep=lambda s: None)
+    # Refresh must SKIP it (already Spotify-sourced) -> ExplodingSpotify not called.
+    s = enrich_all(conn, ExplodingSpotify(), "KEY", refresh=True, sleep=lambda s: None)
+    assert s["skipped"] == 1
+    assert s["spotify"] == 0
