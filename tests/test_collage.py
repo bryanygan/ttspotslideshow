@@ -29,3 +29,8 @@ def test_collage_quadrant_placement():
 def test_collage_requires_four_cards():
     with pytest.raises(ValueError):
         collage([_solid((0, 0, 0))])
+
+
+def test_collage_rejects_more_than_four_cards():
+    with pytest.raises(ValueError):
+        collage([_solid((0, 0, 0)) for _ in range(5)])

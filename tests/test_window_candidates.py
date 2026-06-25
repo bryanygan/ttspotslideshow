@@ -34,6 +34,14 @@ def test_aggregates_counts_and_window_filter():
     assert by_key["carti\tlocation"]["last_played_unix"] == 1500
 
 
+def test_start_unix_boundary_is_inclusive():
+    conn = _conn()
+    _lastfm(conn, "Carti", "Edge", 1000)       # exactly at start -> included
+    _lastfm(conn, "Carti", "Before", 999)      # one second before -> excluded
+    cands = {c["track_key"] for c in db.window_track_candidates(conn, start_unix=1000)}
+    assert cands == {"carti\tedge"}
+
+
 def test_joins_primary_bucket_and_defaults_unknown():
     conn = _conn()
     db.upsert_artist_genre(

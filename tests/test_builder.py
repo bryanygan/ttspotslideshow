@@ -48,6 +48,10 @@ def test_build_writes_one_slide_and_records_featured(tmp_path, monkeypatch):
 
     assert summary["slide_count"] == 1
     assert summary["track_count"] == 4
+    # No artist_genres rows -> every track defaults to the 'unknown' bucket, and
+    # the spread always sums to the rendered track count.
+    assert summary["genre_spread"] == {"unknown": 4}
+    assert sum(summary["genre_spread"].values()) == summary["track_count"]
     slide = tmp_path / "out" / "2026-06-24" / "slide_1.png"
     assert slide.exists()
     assert Image.open(slide).size == (1080, 1920)

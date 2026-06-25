@@ -39,6 +39,17 @@ def test_cross_source_pair_within_window_collapses_to_spotify():
     assert rows[0]["source"] == "spotify"
 
 
+def test_lastfm_first_then_spotify_still_collapses_to_spotify():
+    # Same pair, but the Last.fm row is logged with the EARLIER timestamp, so it is
+    # iterated first. The later Spotify row must still win (replace it in-place).
+    conn = _conn()
+    _lastfm(conn, "carti", "location", 1000)
+    _spotify(conn, "Carti", "Location", 1050)  # +50s, normalized-equal
+    rows = db.canonical_plays(conn, window_seconds=120)
+    assert len(rows) == 1
+    assert rows[0]["source"] == "spotify"
+
+
 def test_cross_source_pair_outside_window_kept_separate():
     conn = _conn()
     _spotify(conn, "Carti", "Location", 1000)

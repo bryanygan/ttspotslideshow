@@ -1,8 +1,29 @@
-from ingest.genre_map import BUCKETS, bucket_for
+from ingest.genre_map import BUCKETS, bucket_for, is_genre_noise
 
 
 def test_first_mapped_genre_wins():
     assert bucket_for(["rage", "atl hip hop"]) == "rage"
+
+
+def test_expanded_catalog_mappings():
+    assert bucket_for(["opium"]) == "rage"
+    assert bucket_for(["detroit rap"]) == "trap"
+    assert bucket_for(["phonk"]) == "trap"
+    assert bucket_for(["jersey club"]) == "electronic"
+    assert bucket_for(["jazz rap"]) == "boom-bap"
+
+
+def test_is_genre_noise_flags_non_genre_tags():
+    # locations, nationalities, decades, meta tags, and import junk are not genres
+    for tag in ["detroit", "american", "usa", "united states", "michigan",
+                "2010s", "10s", "seen live", "favorites",
+                "funk_add_to_lidarr_batch_22"]:
+        assert is_genre_noise(tag), tag
+
+
+def test_is_genre_noise_keeps_real_genres():
+    for tag in ["trap", "hip-hop", "rage", "detroit rap", "r&b", "plugg"]:
+        assert not is_genre_noise(tag), tag
 
 
 def test_skips_unmapped_then_matches():

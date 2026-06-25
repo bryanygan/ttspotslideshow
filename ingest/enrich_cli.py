@@ -30,9 +30,8 @@ def run_ingest(conn, xml_path, spotify_client, lastfm_api_key, fetch=None,
     }
 
 
-def main() -> None:
+def build_parser():
     import argparse
-    import time
 
     parser = argparse.ArgumentParser(description="Import Last.fm history + enrich genres.")
     parser.add_argument(
@@ -43,7 +42,26 @@ def main() -> None:
         "--refresh", action="store_true",
         help="re-enrich non-Spotify artists, upgrading them to Spotify genres.",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--lastfm-refresh", action="store_true",
+        help="re-do Last.fm genres for non-Spotify artists with the current "
+             "tag rules (no Spotify calls); use after tuning the genre map.",
+    )
+    return parser
+
+
+def resolve_modes(args) -> tuple[bool, bool]:
+    """Map CLI args to (skip_spotify, refresh) for enrich_all."""
+    if args.lastfm_refresh:
+        return True, True  # re-process non-Spotify rows, Last.fm only
+    return args.lastfm_only, args.refresh
+
+
+def main() -> None:
+    import time
+
+    args = build_parser().parse_args()
+    skip_spotify, refresh = resolve_modes(args)
 
     config.assert_credentials()
     xml_path = config.resolve_export_path()
@@ -53,7 +71,8 @@ def main() -> None:
     def progress(done, total):
         print(f"  enriching artists: {done}/{total}", flush=True)
 
-    mode = ("Last.fm-only" if args.lastfm_only
+    mode = ("Last.fm-refresh" if args.lastfm_refresh
+            else "Last.fm-only" if args.lastfm_only
             else "refresh non-Spotify" if args.refresh else "Spotify-primary")
     print(f"Importing scrobbles + enriching artist genres ({mode}, "
           "resumable — safe to re-run if interrupted)...", flush=True)
@@ -61,7 +80,7 @@ def main() -> None:
         summary = run_ingest(
             conn, xml_path, get_client(), config.LASTFM_API_KEY,
             sleep=time.sleep, progress=progress,
-            skip_spotify=args.lastfm_only, refresh=args.refresh,
+            skip_spotify=skip_spotify, refresh=refresh,
         )
 
     print(f"Imported {summary['imported']} scrobbles "

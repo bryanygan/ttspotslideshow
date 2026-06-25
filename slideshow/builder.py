@@ -37,7 +37,7 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
     if not rendered:
         return summary
 
-    art_cache: dict = {}
+    art_cache: dict[str, str] = {}
     cards = []
     for track in rendered:
         url = resolve_art_url(track, fetch=fetch, cache=art_cache)

@@ -28,6 +28,11 @@ def test_error_falls_back_then_empty():
     assert resolve_art_url(_track(art=""), fetch=boom) == ""
 
 
+def test_malformed_json_falls_back_to_lastfm():
+    out = resolve_art_url(_track(), fetch=lambda url: "not json {[")
+    assert out == "https://lastfm/300.jpg"
+
+
 def test_cache_avoids_second_fetch():
     calls = []
 

@@ -66,6 +66,53 @@ def test_resolve_rejects_name_mismatch():
     assert out["genre_source"] == "none"
 
 
+def test_resolve_filters_noise_only_tags_to_none():
+    # An artist whose only Last.fm tags are locations/meta -> no real genre.
+    sp = FakeSpotify({})  # no Spotify hit
+    out = resolve_artist_genre(
+        "RegionalGuy", sp, "KEY",
+        fetch=lambda url: '{"toptags": {"tag": ['
+                          '{"name": "detroit", "count": 100},'
+                          '{"name": "american", "count": 50}]}}',
+    )
+    assert out["genre_source"] == "none"
+    assert out["primary_bucket"] == "unknown"
+
+
+def test_resolve_keeps_genre_tag_alongside_noise():
+    sp = FakeSpotify({})
+    out = resolve_artist_genre(
+        "RegionalGuy", sp, "KEY",
+        fetch=lambda url: '{"toptags": {"tag": ['
+                          '{"name": "detroit", "count": 100},'
+                          '{"name": "detroit rap", "count": 80}]}}',
+    )
+    assert out["genre_source"] == "lastfm"
+    assert out["primary_bucket"] == "trap"
+
+
+def test_lastfm_refresh_reprocesses_nonspotify_rows():
+    conn = _conn()
+    db.insert_lastfm_play(
+        conn, track_id="", name="S", artist="Regional",
+        album_art_url="", played_at="2023-11-14T00:00:00+00:00",
+        played_at_unix=1700000000,
+    )
+    sp = FakeSpotify({})  # Spotify blocked / no hit -> Last.fm path
+    fetch = lambda url: '{"toptags": {"tag": [{"name": "detroit rap", "count": 100}]}}'
+    enrich_all(conn, sp, "KEY", fetch=fetch, skip_spotify=True, sleep=lambda s: None)
+    assert db.get_artist_genre(conn, "regional")["genre_source"] == "lastfm"
+
+    # A plain re-run skips it; a Last.fm refresh re-processes it.
+    again = enrich_all(conn, sp, "KEY", fetch=fetch, skip_spotify=True,
+                       sleep=lambda s: None)
+    assert again["skipped"] == 1 and again["lastfm"] == 0
+
+    refreshed = enrich_all(conn, sp, "KEY", fetch=fetch, skip_spotify=True,
+                           refresh=True, sleep=lambda s: None)
+    assert refreshed["skipped"] == 0 and refreshed["lastfm"] == 1
+
+
 def test_enrich_all_caches_and_is_resumable():
     conn = _conn()
     db.insert_lastfm_play(

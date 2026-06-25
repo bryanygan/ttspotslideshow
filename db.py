@@ -1,10 +1,12 @@
-"""SQLite layer: schema, connection, and the handful of queries the logger needs.
+"""SQLite layer: schema, connection, and all the queries the pipeline needs.
 
-Two tables:
-  plays   -> one row per play event (the source of truth for everything later).
-  artists -> a cache of artist_id -> genres, so we don't refetch genres for the
-             same artist on every run (Spotify removed the batch artist endpoint,
-             so each lookup is a separate API call -- caching matters).
+Tables:
+  plays         -> one row per play event (the source of truth for everything later).
+  artist_genres -> Phase-3 genre source for selection, keyed by normalized artist name.
+  featured_tracks -> what the slideshow has posted, for the novelty/freshness signal.
+  artists       -> Phase-1 logger's genre cache (artist_id -> genres). Spotify removed
+                   the batch artist endpoint, so each lookup is a separate API call --
+                   caching matters.
 """
 
 import sqlite3
@@ -50,7 +52,9 @@ CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
 CREATE INDEX IF NOT EXISTS idx_plays_unix ON plays(played_at_unix);
 """
 
-# Legacy: keep artists table for backward compat (existing tests may reference it)
+# Phase-1 logger's genre cache (artist_id -> genres). Still used by the logger via
+# get_cached_genres/cache_artist; distinct from artist_genres (the Phase-3 selection
+# source, keyed by normalized artist name).
 CREATE_ARTISTS = """
 CREATE TABLE IF NOT EXISTS artists (
     artist_id  TEXT PRIMARY KEY,
@@ -328,7 +332,8 @@ def featured_history(conn: sqlite3.Connection) -> dict:
     return {r["track_key"]: r["last_featured_date"] for r in rows}
 
 
-def record_featured(conn: sqlite3.Connection, track_keys, run_date: str) -> None:
+def record_featured(conn: sqlite3.Connection, track_keys: list[str],
+                    run_date: str) -> None:
     """Record that the given track_keys were featured on run_date (YYYY-MM-DD)."""
     for key in track_keys:
         conn.execute(
@@ -361,9 +366,10 @@ def window_track_candidates(conn: sqlite3.Connection, start_unix: int) -> list:
         track_key = artist_key + "\t" + normalize(r["name"])
         g = groups.get(track_key)
         if g is None:
-            groups[track_key] = g = {
+            # First play seen for this track: it is the representative one so far.
+            groups[track_key] = {
                 "track_key": track_key,
-                "play_count": 0,
+                "play_count": 1,
                 "track_id": r["track_id"],
                 "title": r["name"],
                 "artist": r["artist"],
@@ -371,6 +377,7 @@ def window_track_candidates(conn: sqlite3.Connection, start_unix: int) -> list:
                 "last_played_unix": unix,
                 "primary_bucket": genres.get(artist_key, "unknown"),
             }
+            continue
         g["play_count"] += 1
         if unix >= g["last_played_unix"]:
             # Refresh representative fields from the most recent play.
