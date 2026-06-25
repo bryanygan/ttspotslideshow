@@ -5,7 +5,7 @@ from typing import Callable, Iterator, Optional
 import xml.etree.ElementTree as ET
 
 import db
-from render.art import is_placeholder
+from webutil import is_placeholder, fetch_text
 
 
 def _text(elem, tag: str) -> str:
@@ -101,13 +101,8 @@ def import_recent_from_api(
     """
     import json
     import urllib.parse
-    import urllib.request
 
-    def _default_fetch(url: str) -> str:
-        with urllib.request.urlopen(url, timeout=15) as resp:
-            return resp.read().decode("utf-8")
-
-    fetcher = fetch or _default_fetch
+    fetcher = fetch or fetch_text
     added = 0
     page = 1
 
