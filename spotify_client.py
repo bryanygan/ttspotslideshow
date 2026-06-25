@@ -22,4 +22,13 @@ def get_client() -> spotipy.Spotify:
         cache_path=str(config.TOKEN_CACHE_PATH),
         open_browser=True,
     )
-    return spotipy.Spotify(auth_manager=auth_manager)
+    # requests_timeout caps each HTTP call so a hung/slow connection can't stall
+    # the batch. retries=0 means spotipy raises a 429 immediately instead of
+    # sleeping on its (possibly very long) Retry-After header — the caller treats
+    # that as a transient failure and defers the artist to a later, resumable run.
+    return spotipy.Spotify(
+        auth_manager=auth_manager,
+        requests_timeout=10,
+        retries=0,
+        status_retries=0,
+    )
