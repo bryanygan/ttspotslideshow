@@ -408,18 +408,18 @@ function App() {
               <label className="text-sm text-gray-400 font-semibold">
                 Time Window
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[7, 14, 30].map(d => (
+              <div className="flex flex-wrap gap-1.5">
+                {[3, 7, 14, 30, 90, 180, 365].map(d => (
                   <button
                     key={d}
                     onClick={() => setDays(d)}
-                    className={`py-2 px-3 rounded-xl font-medium text-sm transition-all ${
+                    className={`py-1.5 px-2.5 rounded-lg font-semibold text-xs transition-all border ${
                       days === d
-                        ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
-                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+                        ? 'bg-purple-900/40 border-purple-500 text-purple-300 shadow-md shadow-purple-500/10'
+                        : 'bg-gray-900 border-gray-850 text-gray-400 hover:bg-gray-800 hover:text-white'
                     }`}
                   >
-                    {d} Days
+                    {d >= 365 ? '1 Year' : d >= 90 ? `${Math.round(d / 30)}M` : `${d} Days`}
                   </button>
                 ))}
               </div>
@@ -561,7 +561,7 @@ function App() {
                 </button>
               </div>
 
-              <div className="flex flex-col gap-2.5 max-h-[300px] overflow-y-auto pr-1">
+              <div className="flex flex-col gap-2.5 max-h-[300px] overflow-y-auto no-scrollbar pr-1">
                 {selectedOrder.map((key, index) => {
                   const track = candidates.find(c => c.track_key === key);
                   if (!track) return null;
@@ -569,77 +569,80 @@ function App() {
                   return (
                     <div
                       key={key}
-                      className="flex items-center gap-2.5 bg-gray-900/60 border border-gray-850 p-2 rounded-xl text-xs"
+                      className="flex flex-col gap-2 bg-[#1b1f28]/40 p-2.5 rounded-xl text-xs"
                     >
-                      {/* Selection Index */}
-                      <span className="text-[10px] font-mono text-gray-500 w-4 shrink-0 text-right font-semibold">
-                        {index + 1}
-                      </span>
+                      {/* Top Row: Track info and Remove button */}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-[10px] font-mono text-gray-500 w-4 shrink-0 text-right font-semibold">
+                          {index + 1}
+                        </span>
 
-                      {/* Album Art */}
-                      <div className="w-8 h-8 rounded-md overflow-hidden shrink-0 border border-gray-800">
-                        {track.album_art_url ? (
-                          <img
-                            src={track.album_art_url.startsWith('http') ? track.album_art_url : `${apiBase}${track.album_art_url}`}
-                            alt={track.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gray-850 flex items-center justify-center text-gray-600 text-[10px]">
-                            🎵
+                        {/* Album Art */}
+                        <div className="w-8 h-8 rounded-md overflow-hidden shrink-0 bg-gray-900">
+                          {track.album_art_url ? (
+                            <img
+                              src={track.album_art_url.startsWith('http') ? track.album_art_url : `${apiBase}${track.album_art_url}`}
+                              alt={track.title}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gray-850 flex items-center justify-center text-gray-600 text-[10px]">
+                              🎵
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Details */}
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-white truncate text-[11px]" title={track.title}>
+                            {track.title}
                           </div>
-                        )}
-                      </div>
-
-                      {/* Details */}
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold text-white truncate text-[11px]" title={track.title}>
-                          {track.title}
+                          <div className="text-gray-400 truncate text-[10px]" title={track.artist}>
+                            {track.artist}
+                          </div>
                         </div>
-                        <div className="text-gray-400 truncate text-[10px]" title={track.artist}>
-                          {track.artist}
-                        </div>
-                      </div>
-
-                      {/* Action buttons wrapper */}
-                      <div className="flex items-center gap-1.5 shrink-0 select-none">
-                        {/* Replace with custom select */}
-                        <select
-                          onChange={(e) => {
-                            const newKey = e.target.value;
-                            if (newKey) handleReplaceTrack(key, newKey);
-                          }}
-                          className="bg-gray-850 text-[10px] border border-gray-700 rounded px-1 py-0.5 text-gray-300 focus:outline-none max-w-[80px]"
-                          value=""
-                        >
-                          <option value="" disabled>Swap</option>
-                          {candidates
-                            .filter(c => !selectedKeys.has(c.track_key))
-                            .map(c => (
-                              <option key={c.track_key} value={c.track_key}>
-                                {c.artist} - {c.title}
-                              </option>
-                            ))}
-                        </select>
-
-                        {/* Replace with random */}
-                        <button
-                          type="button"
-                          onClick={() => handleReplaceWithRandom(key)}
-                          className="p-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-[10px]"
-                          title="Replace with random song"
-                        >
-                          🎲
-                        </button>
 
                         {/* Remove */}
                         <button
                           type="button"
                           onClick={() => handleToggleSelect(key)}
-                          className="p-1 rounded bg-red-950/40 hover:bg-red-900/40 text-red-400 text-[10px]"
+                          className="p-1 rounded hover:bg-red-900/20 text-red-400 hover:text-red-300 shrink-0 text-[10px]"
                           title="Remove track"
                         >
                           ❌
+                        </button>
+                      </div>
+
+                      {/* Bottom Row: Actions (Swap & Random) */}
+                      <div className="pl-6.5 flex items-center justify-between gap-2 border-t border-gray-800/30 pt-1.5 mt-0.5">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          <span className="text-[9px] text-gray-500 font-semibold shrink-0 uppercase tracking-wider">Swap:</span>
+                          <select
+                            onChange={(e) => {
+                              const newKey = e.target.value;
+                              if (newKey) handleReplaceTrack(key, newKey);
+                            }}
+                            className="bg-gray-850 text-[10px] border border-gray-700 rounded px-1 py-0.5 text-gray-300 focus:outline-none w-full max-w-[130px]"
+                            value=""
+                          >
+                            <option value="" disabled>Choose track...</option>
+                            {candidates
+                              .filter(c => !selectedKeys.has(c.track_key))
+                              .map(c => (
+                                <option key={c.track_key} value={c.track_key}>
+                                  {c.artist} - {c.title}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleReplaceWithRandom(key)}
+                          className="px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-750 border border-gray-700 text-gray-350 text-[10px] font-semibold flex items-center gap-1 shrink-0 transition-colors"
+                          title="Replace with random song"
+                        >
+                          🎲 Random
                         </button>
                       </div>
                     </div>
@@ -894,7 +897,7 @@ function App() {
 
                         {/* Cover image with manual upload overlay */}
                         <div
-                          className="relative w-12 h-12 rounded-lg border border-gray-800 overflow-hidden shrink-0 group/cover cursor-pointer"
+                          className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 group/cover cursor-pointer bg-gray-850"
                           onClick={(e) => {
                             e.stopPropagation(); // prevent selecting/toggling track row
                             document.getElementById(`file-input-${track.track_key.replace(/\s+/g, '_')}`)?.click();
