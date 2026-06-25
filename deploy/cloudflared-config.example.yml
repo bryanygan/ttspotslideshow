@@ -1,0 +1,23 @@
+# Example config for a CLI-managed *named* Cloudflare Tunnel.
+# (Simpler alternative: create the tunnel in the Zero Trust dashboard, which runs
+#  the connector as a Windows service and needs no file. Use this only if you
+#  prefer the CLI approach.)
+#
+# One-time setup on the mini PC:
+#   1. cloudflared tunnel login
+#   2. cloudflared tunnel create minipc          # prints a TUNNEL-UUID + creds json
+#   3. Save this file as  C:\Users\<you>\.cloudflared\config.yml  and fill in below
+#   4. cloudflared tunnel route dns minipc api.yourdomain.com
+#   5. cloudflared service install                # runs on boot
+#
+# Then add a Cloudflare Access policy on api.yourdomain.com (allow only your email).
+
+tunnel: <TUNNEL-UUID>
+credentials-file: C:\Users\<you>\.cloudflared\<TUNNEL-UUID>.json
+
+ingress:
+  # Public HTTPS hostname -> the dashboard backend on this machine.
+  - hostname: api.yourdomain.com
+    service: http://localhost:8000
+  # Required catch-all.
+  - service: http_status:404
