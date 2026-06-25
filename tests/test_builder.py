@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 
 from PIL import Image
 
@@ -98,7 +99,7 @@ def test_build_recap_slideshow(tmp_path, monkeypatch):
     assert summary["slide_count"] == 1
     assert summary["track_count"] == 4
     assert summary["genre_spread"] == {"pop": 2, "hip-hop": 2}
-    slide = tmp_path / "out" / "recap-2026-06-25" / "slide_1.png"
+    slide = Path(summary["out_dir"]) / "slide_1.png"
     assert slide.exists()
     assert Image.open(slide).size == (1080, 1920)
     history = db.featured_history(conn)
@@ -231,11 +232,12 @@ def test_build_recap_with_cover_theme_and_watermark(tmp_path, monkeypatch):
     assert summary["slide_count"] == 2
     assert summary["track_count"] == 4
 
-    cover_slide = tmp_path / "out" / "recap-2026-06-25" / "slide_1.png"
+    out_dir = Path(summary["out_dir"])
+    cover_slide = out_dir / "slide_1.png"
     assert cover_slide.exists()
     assert Image.open(cover_slide).size == (1080, 1920)
 
-    collage_slide = tmp_path / "out" / "recap-2026-06-25" / "slide_2.png"
+    collage_slide = out_dir / "slide_2.png"
     assert collage_slide.exists()
     assert Image.open(collage_slide).size == (1080, 1920)
 

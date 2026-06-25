@@ -161,11 +161,19 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
 def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
                           fetch=None, cache_dir=None, overrides_dir=None,
                           cover_title=None, cover_subtitle=None,
-                          cover_theme=None, watermark=None) -> dict:
+                          cover_theme=None, watermark=None,
+                          recap_id=None) -> dict:
     """Build slides for specific selected tracks. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
-    out_dir = Path(out_root) / f"recap-{run_date}"
+    
+    if not recap_id:
+        import time
+        import uuid
+        unique_suffix = f"{int(time.time())}-{uuid.uuid4().hex[:6]}"
+        recap_id = f"recap-{run_date}-{unique_suffix}"
+
+    out_dir = Path(out_root) / recap_id
 
     dispersed = disperse_tracks(tracks)
     # We round down to the nearest multiple of 4, since slides are 4-up.
