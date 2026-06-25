@@ -164,7 +164,10 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
         slide_count += 1
         collage(cards[i:i + 4]).save(out_dir / f"slide_{slide_count}.png")
 
-    db.record_featured(conn, [t["track_key"] for t in rendered], f"recap-{run_date}")
+    # Store the plain ISO run_date (NOT the "recap-" folder name): the selector's
+    # novelty check parses last_featured_date with date.fromisoformat(), so a
+    # "recap-..." string here would crash the next regular build.
+    db.record_featured(conn, [t["track_key"] for t in rendered], run_date)
 
     spread: dict = {}
     for track in rendered:
