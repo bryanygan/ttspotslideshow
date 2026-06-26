@@ -80,3 +80,22 @@ export async function uploadArt(
   const data = await resp.json();
   return { url: data.url };
 }
+
+export async function uploadOcrScreenshot(
+  apiBase: string,
+  file: File,
+): Promise<Candidate[]> {
+  const resp = await fetch(`${apiBase}/api/ocr`, {
+    method: "POST",
+    headers: {
+      "Content-Type": file.type,
+    },
+    body: file,
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `OCR failed (HTTP ${resp.status}).`);
+  }
+  const data = await resp.json();
+  return data.tracks ?? [];
+}

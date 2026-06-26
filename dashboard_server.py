@@ -47,6 +47,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_post_override_upload()
         elif parsed.path == "/api/art-test/save":
             self.handle_post_art_test_save()
+        elif parsed.path == "/api/ocr":
+            self.handle_post_ocr()
         else:
             self.send_error(404, "Not Found")
 
@@ -323,6 +325,59 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(
             json.dumps({"status": "success", "filename": filename, "url": f"/api/overrides/{filename}"}).encode("utf-8")
         )
+
+    def handle_post_ocr(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length <= 0:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Empty file payload"}).encode("utf-8"))
+            return
+
+        file_data = self.rfile.read(content_length)
+
+        # Save temporary file in output/ocr_temp
+        temp_dir = Path("output") / "ocr_temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_file = temp_dir / "temp_screenshot.png"
+
+        try:
+            with open(temp_file, "wb") as f:
+                f.write(file_data)
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": f"Failed to save temporary screenshot: {e}"}).encode("utf-8"))
+            return
+
+        # Run OCR
+        try:
+            from slideshow.ocr import run_windows_ocr, parse_tracks_from_lines
+            lines = run_windows_ocr(temp_file)
+            if not lines:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"tracks": []}).encode("utf-8"))
+                return
+
+            with db.connect() as conn:
+                tracks = parse_tracks_from_lines(lines, conn=conn)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"tracks": tracks}).encode("utf-8"))
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+        finally:
+            if temp_file.exists():
+                temp_file.unlink(missing_ok=True)
 
     def handle_static_files(self, parsed):
         dist_dir = Path("dashboard") / "dist"

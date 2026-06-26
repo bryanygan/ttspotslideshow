@@ -5,6 +5,7 @@ import {
   fetchCandidates,
   generateRecap,
   uploadArt,
+  uploadOcrScreenshot,
 } from "./api";
 import { PRESETS } from "./presets";
 
@@ -67,6 +68,14 @@ export interface RecapState {
   missingCovers: Array<{ artist: string; title: string; track_key: string }>;
   setMissingCovers: (v: Array<{ artist: string; title: string; track_key: string }>) => void;
   saveArtLinkFor: (track: { artist: string; title: string; track_key: string }, url: string) => Promise<void>;
+
+  // OCR
+  ocrTracks: Candidate[];
+  ocrLoading: boolean;
+  ocrError: string | null;
+  runOcr: (file: File) => Promise<void>;
+  addOcrTracksToSelection: () => void;
+  clearOcrTracks: () => void;
 }
 
 export function useRecap(): RecapState {
@@ -94,6 +103,10 @@ export function useRecap(): RecapState {
   const [summary, setSummary] = useState<GenerateSummary | null>(null);
   const [slideUrls, setSlideUrls] = useState<string[]>([]);
   const [missingCovers, setMissingCovers] = useState<Array<{ artist: string; title: string; track_key: string }>>([]);
+
+  const [ocrTracks, setOcrTracks] = useState<Candidate[]>([]);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
 
   const setApiBase = useCallback((v: string) => {
     let normalized = v.trim();
@@ -317,6 +330,54 @@ export function useRecap(): RecapState {
     [apiBase],
   );
 
+  const runOcr = useCallback(
+    async (file: File) => {
+      setOcrLoading(true);
+      setOcrError(null);
+      setOcrTracks([]);
+      try {
+        const tracks = await uploadOcrScreenshot(apiBase, file);
+        setOcrTracks(tracks);
+      } catch (err) {
+        setOcrError(err instanceof Error ? err.message : "OCR failed.");
+      } finally {
+        setOcrLoading(false);
+      }
+    },
+    [apiBase],
+  );
+
+  const addOcrTracksToSelection = useCallback(() => {
+    setOcrTracks((prev) => {
+      const newKeys: string[] = [];
+      const newTracks: Candidate[] = [];
+      for (const t of prev) {
+        if (!selectedKeys.has(t.track_key)) {
+          newKeys.push(t.track_key);
+          newTracks.push(t);
+        }
+      }
+      // Merge OCR tracks into candidates so they're selectable
+      setCandidates((cands) => {
+        const existingKeys = new Set(cands.map((c) => c.track_key));
+        const toAdd = newTracks.filter((t) => !existingKeys.has(t.track_key));
+        return [...cands, ...toAdd];
+      });
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        for (const k of newKeys) next.add(k);
+        return next;
+      });
+      setSelectedOrder((prev) => [...prev, ...newKeys]);
+      return [];
+    });
+  }, [selectedKeys]);
+
+  const clearOcrTracks = useCallback(() => {
+    setOcrTracks([]);
+    setOcrError(null);
+  }, []);
+
   return {
     apiBase,
     setApiBase,
@@ -361,5 +422,11 @@ export function useRecap(): RecapState {
     missingCovers,
     setMissingCovers,
     saveArtLinkFor,
+    ocrTracks,
+    ocrLoading,
+    ocrError,
+    runOcr,
+    addOcrTracksToSelection,
+    clearOcrTracks,
   };
 }

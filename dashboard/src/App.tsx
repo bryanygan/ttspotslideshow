@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRecap } from "./lib/useRecap";
 import { PocketDJ } from "./options/pocket/PocketDJ";
 import { ArtSandbox } from "./options/pocket/ArtSandbox";
+import { OcrScanner } from "./options/pocket/OcrScanner";
 import { Sheet } from "./ui/Sheet";
 import { GearIcon, MusicIcon } from "./ui/icons";
 
@@ -10,7 +11,7 @@ function App() {
   const r = useRecap();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tempApiBase, setTempApiBase] = useState(r.apiBase);
-  const [viewMode, setViewMode] = useState<"picker" | "art-test">("picker");
+  const [viewMode, setViewMode] = useState<"picker" | "art-test" | "ocr">("picker");
 
   // Sync tempApiBase when the settings sheet is opened
   useEffect(() => {
@@ -43,6 +44,16 @@ function App() {
               Recap Picker
             </button>
             <button
+              onClick={() => setViewMode("ocr")}
+              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                viewMode === "ocr"
+                  ? "bg-violet-600 text-white shadow"
+                  : "text-zinc-400 hover:text-zinc-100"
+              }`}
+            >
+              Screenshot
+            </button>
+            <button
               onClick={() => setViewMode("art-test")}
               className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
                 viewMode === "art-test"
@@ -66,7 +77,7 @@ function App() {
       </header>
 
       <div className="pt-11">
-        {viewMode === "picker" ? <PocketDJ r={r} /> : <ArtSandbox apiBase={r.apiBase} />}
+        {viewMode === "picker" ? <PocketDJ r={r} /> : viewMode === "ocr" ? <OcrScanner r={r} /> : <ArtSandbox apiBase={r.apiBase} />}
       </div>
 
       <Sheet
