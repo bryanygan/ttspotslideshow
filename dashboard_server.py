@@ -3,7 +3,7 @@ import sys
 import time
 import threading
 import queue
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 from render.art import find_override_art
@@ -700,7 +700,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 def main():
     port = 8000
     server_address = ("", port)
-    httpd = HTTPServer(server_address, DashboardHandler)
+    httpd = ThreadingHTTPServer(server_address, DashboardHandler)
     print(
         f"Starting Weekly Recap Dashboard Server on http://localhost:{port}/..."
     )
