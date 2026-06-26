@@ -84,7 +84,7 @@ export function useRecap(): RecapState {
   const [includeCover, setIncludeCover] = useState(true);
   const [coverTitle, setCoverTitle] = useState("");
   const [coverSubtitle, setCoverSubtitle] = useState("");
-  const [coverTheme, setCoverTheme] = useState("purple");
+  const [coverTheme, setCoverTheme] = useState("none");
   const [watermark, setWatermark] = useState("");
 
   const [generating, setGenerating] = useState(false);

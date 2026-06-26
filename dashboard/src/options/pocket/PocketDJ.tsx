@@ -297,14 +297,16 @@ function CreateTab({ r }: { r: RecapState }) {
                 </div>
               ))}
             </div>
-            <div className={`absolute inset-0 bg-gradient-to-br ${theme.swatch} opacity-55`} />
+            {r.coverTheme !== "none" && (
+              <div className={`absolute inset-0 bg-gradient-to-br ${theme.swatch} opacity-55`} />
+            )}
             <div className="absolute inset-0 bg-black/30" />
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center">
               <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-white/75">
-                {r.coverSubtitle || "Last 7 Days"}
+                {r.coverSubtitle}
               </span>
               <span className="font-display text-base font-bold leading-tight text-white drop-shadow">
-                {r.coverTitle || "WEEKLY ROTATION"}
+                {r.coverTitle}
               </span>
             </div>
             {r.watermark && (

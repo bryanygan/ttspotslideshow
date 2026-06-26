@@ -111,14 +111,15 @@ def render_cover_collage(
     if not art_paths:
         return render_cover_slide(title, subtitle, theme=theme, footer_text=footer_text)
 
-    top_color, bottom_color = _theme_colors(theme)
-
-    # Mosaic, then a theme-tinted scrim so overlaid text stays readable while the
-    # album colors still show through.
+    # Mosaic background. Apply theme tint scrim if selected.
     mosaic = _build_mosaic(art_paths, columns).convert("RGBA")
-    tint = vertical_gradient((SLIDE_W, SLIDE_H), top_color, bottom_color).convert("RGBA")
-    tint.putalpha(150)  # ~59% tint
-    base = Image.alpha_composite(mosaic, tint)
+    if theme and theme.lower() != "none":
+        top_color, bottom_color = _theme_colors(theme)
+        tint = vertical_gradient((SLIDE_W, SLIDE_H), top_color, bottom_color).convert("RGBA")
+        tint.putalpha(150)  # ~59% tint
+        base = Image.alpha_composite(mosaic, tint)
+    else:
+        base = mosaic
 
     # A soft centered plate behind the hook text guarantees legibility over any
     # underlying covers.

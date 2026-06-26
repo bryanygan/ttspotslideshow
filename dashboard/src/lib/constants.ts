@@ -23,6 +23,7 @@ export interface CoverTheme {
 }
 
 export const COVER_THEMES: CoverTheme[] = [
+  { value: "none", label: "None", emoji: "🚫", swatch: "from-zinc-800 to-zinc-900 border border-zinc-700" },
   { value: "purple", label: "Royal Purple", emoji: "🟣", swatch: "from-violet-600 to-purple-700" },
   { value: "sunset", label: "Hot Pink Sunset", emoji: "🌸", swatch: "from-pink-500 to-rose-600" },
   { value: "sunrise", label: "Sunrise Orange", emoji: "🔥", swatch: "from-orange-500 to-red-600" },
