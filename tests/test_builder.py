@@ -30,7 +30,7 @@ def test_build_writes_one_slide_and_records_featured(tmp_path, monkeypatch):
     for i in range(4):
         db.insert_lastfm_play(
             conn, track_id="", name=f"Song{i}", artist=f"Artist{i}",
-            album_art_url="https://lastfm/300.jpg",
+            album_art_url="https://example.com/300.jpg",
             played_at=_iso(NOW - DAY), played_at_unix=NOW - DAY,
         )
 
@@ -79,7 +79,7 @@ def test_build_recap_slideshow(tmp_path, monkeypatch):
             "track_id": f"id{i}",
             "title": f"Song{i}",
             "artist": f"Artist{i}",
-            "album_art_url": "https://lastfm/300.jpg",
+            "album_art_url": "https://example.com/300.jpg",
             "primary_bucket": "pop" if i % 2 == 0 else "hip-hop",
         }
         for i in range(4)
@@ -120,7 +120,7 @@ def test_recap_featured_does_not_break_later_select(tmp_path, monkeypatch):
             "track_id": f"id{i}",
             "title": f"Song{i}",
             "artist": f"Artist{i}",
-            "album_art_url": "https://lastfm/300.jpg",
+            "album_art_url": "https://example.com/300.jpg",
             "primary_bucket": "pop",
         }
         for i in range(4)
@@ -176,7 +176,7 @@ def test_build_uses_manual_overrides(tmp_path, monkeypatch):
     for i in range(4):
         db.insert_lastfm_play(
             conn, track_id="", name=f"Song{i}", artist=f"Artist{i}",
-            album_art_url=f"https://lastfm/{i}.jpg",
+            album_art_url=f"https://example.com/{i}.jpg",
             played_at=_iso(NOW - DAY), played_at_unix=NOW - DAY,
         )
 
@@ -210,7 +210,7 @@ def test_build_recap_with_cover_theme_and_watermark(tmp_path, monkeypatch):
             "track_id": f"id{i}",
             "title": f"Song{i}",
             "artist": f"Artist{i}",
-            "album_art_url": "https://lastfm/300.jpg",
+            "album_art_url": "https://example.com/300.jpg",
             "primary_bucket": "pop",
         }
         for i in range(4)

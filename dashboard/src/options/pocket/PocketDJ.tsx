@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import type { RecapState } from "../../lib/useRecap";
 import { WINDOWS, windowLabel, COVER_THEMES } from "../../lib/constants";
 import { resolveArt } from "../../lib/api";
@@ -327,6 +327,31 @@ function CreateTab({ r }: { r: RecapState }) {
 
       <Summary r={r} />
 
+      {r.missingCovers.length > 0 && (
+        <section className="rounded-2xl border border-rose-500/20 bg-rose-950/10 p-4 flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="font-display text-sm font-semibold text-rose-300 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+              Missing Spotify Cover Art ({r.missingCovers.length})
+            </h3>
+            <p className="text-xs text-zinc-400">
+              The following tracks do not have cover art on Spotify. Please upload an image or paste a direct image URL link:
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {r.missingCovers.map((track) => (
+              <MissingCoverRow
+                key={track.track_key}
+                track={track}
+                onUpload={(file) => r.uploadArtFor(track as any, file)}
+                onSaveLink={(url) => r.saveArtLinkFor(track, url)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       <button
         type="button"
         onClick={r.generate}
@@ -357,6 +382,67 @@ function CreateTab({ r }: { r: RecapState }) {
       </button>
 
       <SlideGallery r={r} />
+    </div>
+  );
+}
+
+function MissingCoverRow({
+  track,
+  onUpload,
+  onSaveLink,
+}: {
+  track: { artist: string; title: string; track_key: string };
+  onUpload: (file: File) => void;
+  onSaveLink: (url: string) => void;
+}) {
+  const [linkUrl, setLinkUrl] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+      <div className="flex flex-col min-w-0 flex-1">
+        <span className="truncate text-sm font-semibold text-white">{track.title}</span>
+        <span className="truncate text-xs text-zinc-400">{track.artist}</span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onUpload(file);
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-zinc-700 hover:text-white transition-colors cursor-pointer"
+        >
+          Upload Image
+        </button>
+
+        <div className="flex items-center gap-1 flex-1 sm:flex-none">
+          <input
+            type="text"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            placeholder="Paste image link..."
+            className="w-full sm:w-44 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-violet-500 focus:outline-none"
+          />
+          <button
+            type="button"
+            disabled={!linkUrl.trim()}
+            onClick={() => onSaveLink(linkUrl.trim())}
+            className="rounded-lg bg-violet-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-violet-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            Save Link
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

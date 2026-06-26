@@ -14,6 +14,13 @@ from render.card import render_card
 from render.collage import collage
 
 
+class MissingCoverError(Exception):
+    """Raised when one or more tracks are missing album cover art."""
+    def __init__(self, missing_tracks):
+        self.missing_tracks = missing_tracks
+        super().__init__(f"Missing album cover art for {len(missing_tracks)} tracks.")
+
+
 def disperse_tracks(
     tracks: list[dict],
     slide_size: int = 4,
@@ -256,6 +263,19 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                     local_path = None
                 for idx in to_download[url]:
                     art_paths[idx] = local_path
+
+    # Check for missing covers
+    missing_tracks = []
+    for idx, path in enumerate(art_paths):
+        if not path:
+            missing_tracks.append({
+                "artist": rendered[idx].get("artist", "Unknown"),
+                "title": rendered[idx].get("title", "Unknown"),
+                "track_key": rendered[idx].get("track_key", "")
+            })
+
+    if missing_tracks:
+        raise MissingCoverError(missing_tracks)
 
     cards = []
     for idx, track in enumerate(rendered):

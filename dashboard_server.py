@@ -173,6 +173,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     cover_pool=cover_pool
                 )
         except Exception as e:
+            from slideshow.builder import MissingCoverError
+            if isinstance(e, MissingCoverError):
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps({
+                        "error": "Missing album cover art",
+                        "missing_covers": e.missing_tracks
+                    }).encode("utf-8")
+                )
+                return
+
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

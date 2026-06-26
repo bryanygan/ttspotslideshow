@@ -64,6 +64,9 @@ export interface RecapState {
   generate: () => void;
 
   uploadArtFor: (track: Candidate, file: File) => void;
+  missingCovers: Array<{ artist: string; title: string; track_key: string }>;
+  setMissingCovers: (v: Array<{ artist: string; title: string; track_key: string }>) => void;
+  saveArtLinkFor: (track: { artist: string; title: string; track_key: string }, url: string) => Promise<void>;
 }
 
 export function useRecap(): RecapState {
@@ -90,6 +93,7 @@ export function useRecap(): RecapState {
   const [generating, setGenerating] = useState(false);
   const [summary, setSummary] = useState<GenerateSummary | null>(null);
   const [slideUrls, setSlideUrls] = useState<string[]>([]);
+  const [missingCovers, setMissingCovers] = useState<Array<{ artist: string; title: string; track_key: string }>>([]);
 
   const setApiBase = useCallback((v: string) => {
     let normalized = v.trim();
@@ -222,12 +226,43 @@ export function useRecap(): RecapState {
   const slideCount = Math.floor(selectedKeys.size / 4);
   const leftover = selectedKeys.size % 4;
 
+  const saveArtLinkFor = useCallback(
+    async (track: { artist: string; title: string; track_key: string }, url: string) => {
+      setError(null);
+      try {
+        await fetch(`${apiBase}/api/art-test/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            artist: track.artist,
+            title: track.title,
+            album_art_url: url,
+          }),
+        });
+        // Optimistically update candidates
+        setCandidates((prev) =>
+          prev.map((c) =>
+            c.track_key === track.track_key
+              ? { ...c, album_art_url: url }
+              : c,
+          ),
+        );
+        // Clear from missingCovers list
+        setMissingCovers((prev) => prev.filter((t) => t.track_key !== track.track_key));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to save cover art URL.");
+      }
+    },
+    [apiBase],
+  );
+
   const generate = useCallback(async () => {
     if (selectedTracks.length === 0) return;
     setGenerating(true);
     setError(null);
     setSummary(null);
     setSlideUrls([]);
+    setMissingCovers([]);
     try {
       const result = await generateRecap(apiBase, {
         tracks: selectedTracks,
@@ -240,7 +275,12 @@ export function useRecap(): RecapState {
       setSummary(result.summary);
       setSlideUrls(result.slides);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate slideshow.");
+      if (err instanceof Error && err.name === "MissingCoverError") {
+        setMissingCovers((err as any).missingCovers);
+        setError("Some tracks are missing Spotify album covers. Please upload or link them below.");
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to generate slideshow.");
+      }
     } finally {
       setGenerating(false);
     }
@@ -268,6 +308,8 @@ export function useRecap(): RecapState {
               : c,
           ),
         );
+        // Clear from missingCovers list
+        setMissingCovers((prev) => prev.filter((t) => t.track_key !== track.track_key));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to upload artwork.");
       }
@@ -316,5 +358,8 @@ export function useRecap(): RecapState {
     leftover,
     generate,
     uploadArtFor,
+    missingCovers,
+    setMissingCovers,
+    saveArtLinkFor,
   };
 }

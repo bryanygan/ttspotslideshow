@@ -31,6 +31,15 @@ export interface GenerateResult {
   slides: string[];
 }
 
+export class MissingCoverError extends Error {
+  missingCovers: Array<{ artist: string; title: string; track_key: string }>;
+  constructor(message: string, missingCovers: any[]) {
+    super(message);
+    this.name = "MissingCoverError";
+    this.missingCovers = missingCovers;
+  }
+}
+
 export async function generateRecap(
   apiBase: string,
   payload: GeneratePayload,
@@ -42,6 +51,9 @@ export async function generateRecap(
   });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
+    if (err.error === "Missing album cover art" && Array.isArray(err.missing_covers)) {
+      throw new MissingCoverError(err.error, err.missing_covers);
+    }
     throw new Error(err.error || `Generation failed (HTTP ${resp.status}).`);
   }
   const data = await resp.json();
