@@ -171,20 +171,21 @@ def render_cover_collage(
         sub_y = start_y + total_title_height + 14
         draw.text((sub_x, sub_y), subtitle, fill=(228, 228, 235), font=sub_font)
 
-    # Footer + accent line.
-    footer = (footer_text or "WEEKLY MUSIC RECAP").upper()
-    footer_w = footer_font.getlength(footer)
-    footer_x = (SLIDE_W - footer_w) // 2
-    footer_y = SLIDE_H - 120
-    accent = (167, 139, 250) if (theme or "").lower() != "dark" else (148, 163, 184)
-    line_len = 120
-    draw.line(
-        [((SLIDE_W - line_len) // 2, footer_y - 22), ((SLIDE_W + line_len) // 2, footer_y - 22)],
-        fill=accent,
-        width=3,
-    )
-    draw.text((footer_x + 2, footer_y + 2), footer, fill=(0, 0, 0), font=footer_font)
-    draw.text((footer_x, footer_y), footer, fill=(226, 226, 235), font=footer_font)
+    # Footer + accent line — only if explicitly provided.
+    if footer_text:
+        footer = footer_text.upper()
+        footer_w = footer_font.getlength(footer)
+        footer_x = (SLIDE_W - footer_w) // 2
+        footer_y = SLIDE_H - 120
+        accent = (167, 139, 250) if (theme or "").lower() != "dark" else (148, 163, 184)
+        line_len = 120
+        draw.line(
+            [((SLIDE_W - line_len) // 2, footer_y - 22), ((SLIDE_W + line_len) // 2, footer_y - 22)],
+            fill=accent,
+            width=3,
+        )
+        draw.text((footer_x + 2, footer_y + 2), footer, fill=(0, 0, 0), font=footer_font)
+        draw.text((footer_x, footer_y), footer, fill=(226, 226, 235), font=footer_font)
 
     return slide
 
@@ -217,15 +218,17 @@ def render_cover_slide(title: str, subtitle: str, theme: str = "purple", footer_
         sub_x = (SLIDE_W - sub_w) // 2
         draw.text((sub_x, sub_y), subtitle, fill=(209, 213, 219), font=sub_font)
 
-    footer = (footer_text if footer_text else "🎵 WEEKLY MUSIC RECAP 🎵").upper()
-    footer_w = footer_font.getlength(footer)
-    footer_x = (SLIDE_W - footer_w) // 2
-    footer_y = SLIDE_H - 120
-    draw.text((footer_x, footer_y), footer, fill=(156, 163, 175), font=footer_font)
+    # Footer + accent line — only if explicitly provided.
+    if footer_text:
+        footer = footer_text.upper()
+        footer_w = footer_font.getlength(footer)
+        footer_x = (SLIDE_W - footer_w) // 2
+        footer_y = SLIDE_H - 120
+        draw.text((footer_x, footer_y), footer, fill=(156, 163, 175), font=footer_font)
 
-    line_length = 120
-    line_x1 = (SLIDE_W - line_length) // 2
-    accent_color = (124, 58, 237) if theme.lower() != "dark" else (75, 85, 99)
-    draw.line([(line_x1, footer_y - 20), (line_x1 + line_length, footer_y - 20)], fill=accent_color, width=3)
+        line_length = 120
+        line_x1 = (SLIDE_W - line_length) // 2
+        accent_color = (124, 58, 237) if theme.lower() != "dark" else (75, 85, 99)
+        draw.line([(line_x1, footer_y - 20), (line_x1 + line_length, footer_y - 20)], fill=accent_color, width=3)
 
     return slide
