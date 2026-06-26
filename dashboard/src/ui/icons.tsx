@@ -123,3 +123,11 @@ export const TrashIcon = (p: IconProps) => (
     <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
   </svg>
 );
+
+export const HistoryIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 3v5h5" />
+    <path d="M3.05 13A9 9 0 1 0 5.5 5.5L3 8" />
+    <path d="M12 7v5l3 3" />
+  </svg>
+);

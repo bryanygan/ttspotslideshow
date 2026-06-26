@@ -34,10 +34,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_get_slide(parsed)
         elif parsed.path.startswith("/api/overrides/"):
             self.handle_get_override(parsed)
-        elif parsed.path == "/api/art-test/tracks":
-            self.handle_get_art_test_tracks()
-        elif parsed.path == "/api/art-test/resolve":
-            self.handle_get_art_test_resolve(parsed)
+        elif parsed.path == "/api/recap-history":
+            self.handle_get_recap_history()
+        elif parsed.path.startswith("/api/recap-history/"):
+            self.handle_get_recap_slides(parsed)
         else:
             self.handle_static_files(parsed)
 
@@ -70,6 +70,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             with db.connect() as conn:
                 candidates = db.window_track_candidates(conn, start_unix)
                 featured = db.featured_history(conn)
+                recent_featured = db.recent_featured_history(conn, last_n_days=14)
         except Exception as e:
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
@@ -125,6 +126,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             # If still None (e.g. no track_id or API failed), default to 50
             c["popularity"] = popularities.get(tid) if popularities.get(tid) is not None else 50
             c["last_featured"] = featured.get(c["track_key"], None)
+
+            rf = recent_featured.get(c["track_key"])
+            c["recently_featured"] = rf is not None
+            c["times_featured"] = rf["times_featured"] if rf else 0
 
             # Check for manual cover art overrides
             override_path = find_override_art(c["artist"], c["title"])
@@ -606,63 +611,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(html.encode("utf-8"))
 
-    def handle_get_art_test_tracks(self):
-        try:
-            with db.connect() as conn:
-                tracks = db.random_unique_tracks(conn, 100)
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"tracks": tracks}).encode("utf-8"))
-        except Exception as e:
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
-
-    def handle_get_art_test_resolve(self, parsed):
-        query = parse_qs(parsed.query)
-        artist = query.get("artist", [""])[0]
-        title = query.get("title", [""])[0]
-
-        if not artist or not title:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Missing artist or title"}).encode("utf-8"))
-            return
-
-        spotify_url = None
-        itunes_url = None
-
-        # 1. Fetch from Spotify
-        try:
-            from slideshow.art_resolve import search_spotify_art
-            spotify_url = search_spotify_art(artist, title)
-        except Exception:
-            pass
-
-        # 2. Fetch from iTunes
-        try:
-            from webutil import itunes_search
-            results = itunes_search(f"{artist} {title}")
-            if results:
-                artwork = results[0].get("artworkUrl100", "")
-                if artwork:
-                    itunes_url = artwork.replace("100x100", "1000x1000")
-        except Exception:
-            pass
-
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(
-            json.dumps({
-                "spotify_url": spotify_url,
-                "itunes_url": itunes_url
-            }).encode("utf-8")
-        )
-
     def handle_post_art_test_save(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length).decode("utf-8")
@@ -697,6 +645,56 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+
+    def handle_get_recap_history(self):
+        """List all past recap directories in output/slides/ that start with 'recap-'."""
+        slides_root = Path("output") / "slides"
+        entries = []
+        if slides_root.exists():
+            for d in sorted(slides_root.iterdir(), reverse=True):
+                if d.is_dir() and d.name.startswith("recap-"):
+                    recap_id = d.name
+                    # Extract date from recap id (e.g. recap-2025-06-15 -> 2025-06-15)
+                    date_part = recap_id.replace("recap-", "")
+                    slide_count = len(list(d.glob("*.png")))
+                    generated_at = d.stat().st_mtime
+                    entries.append({
+                        "recap_id": recap_id,
+                        "date": date_part,
+                        "slide_count": slide_count,
+                        "generated_at": generated_at,
+                    })
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps({"history": entries}).encode("utf-8"))
+
+    def handle_get_recap_slides(self, parsed):
+        """Return slide URLs for a specific recap: /api/recap-history/<recap_id>/slides."""
+        parts = parsed.path.strip("/").split("/")
+        # Expected: ["api", "recap-history", "<recap_id>", "slides"]
+        if len(parts) != 4 or parts[-1] != "slides":
+            self.send_error(404, "Not Found")
+            return
+        recap_id = parts[2]
+        recap_dir = (Path("output") / "slides" / recap_id).resolve()
+        slides_root = (Path("output") / "slides").resolve()
+
+        if not recap_dir.is_relative_to(slides_root) or not recap_dir.is_dir():
+            self.send_error(404, "Not Found")
+            return
+
+        slide_files = sorted(recap_dir.glob("*.png"))
+        slides = [
+            f"/api/slides/{recap_id}/{f.name}"
+            for f in slide_files
+        ]
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps({"recap_id": recap_id, "slides": slides}).encode("utf-8"))
 
 
 def main():

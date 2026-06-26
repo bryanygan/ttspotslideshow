@@ -32,6 +32,12 @@ export const underrated: PresetFn = (candidates, count) =>
 export const randomMix: PresetFn = (candidates, count) =>
   take([...candidates].sort(() => 0.5 - Math.random()), count);
 
+export const noRepeats: PresetFn = (candidates, count) => {
+  // Filter out tracks recently featured, then sort by plays
+  const fresh = candidates.filter((c) => !c.recently_featured);
+  return take(fresh.sort(byPlays), count);
+};
+
 // Group by a field (artist / genre bucket), pick the highest-play group first,
 // then top up from the next groups until we hit the target count.
 function topGroupFill(
@@ -86,4 +92,5 @@ export const PRESETS: PresetDef[] = [
   { id: "genre", label: "Genre Vibe", emoji: "💿", hint: "Built around your top genre", fn: sameGenre },
   { id: "underrated", label: "Underrated", emoji: "💎", hint: "High plays, low global popularity", fn: underrated },
   { id: "random", label: "Random Mix", emoji: "🔀", hint: "A random handful from the pool", fn: randomMix },
+  { id: "norepeats", label: "No Repeats", emoji: "🚫", hint: "Skip tracks featured in the last 14 days", fn: noRepeats },
 ];

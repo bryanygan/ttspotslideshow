@@ -1,4 +1,4 @@
-﻿# TikTok Spotify Slideshow
+# TikTok Spotify Slideshow
 
 > Automated listening-history → album-art card → TikTok slideshow generator with a full web dashboard for weekly recap curation.
 
@@ -79,8 +79,7 @@ ttspotslideshow/
 │   │   │   └── types.ts
 │   │   └── options/pocket/
 │   │       ├── PocketDJ.tsx  #   main picker UI (Browse / Picks / Create tabs)
-│   │       ├── OcrScanner.tsx#   Screenshot tab — drag-and-drop OCR upload
-│   │       └── ArtSandbox.tsx
+│   │       └── OcrScanner.tsx#   Screenshot tab — drag-and-drop OCR upload
 │   └── dist/                 #   built bundle (served by dashboard_server.py)
 │
 ├── tests/                    # pytest suite (147 tests, all offline)
@@ -226,7 +225,6 @@ python dashboard_server.py
 | **Picks** | Review and reorder your selection. Quick-select presets (4 / 8 / 12 / 16). |
 | **Create** | Configure the optional cover slide (title, subtitle, theme), set a watermark, hit **Generate**. Slides appear inline — long-press on mobile to save to Photos. |
 | **Screenshot** | Drag-and-drop a Spotify queue screenshot → Windows OCR detects tracks → add them to picks in one tap. |
-| **Art Sandbox** | Test and save custom album art URLs. |
 
 ### Album art resolution order
 

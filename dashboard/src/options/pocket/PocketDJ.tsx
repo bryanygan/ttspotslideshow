@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import type { RecapState } from "../../lib/useRecap";
 import { WINDOWS, windowLabel, COVER_THEMES } from "../../lib/constants";
 import { resolveArt } from "../../lib/api";
@@ -10,6 +10,7 @@ import { SelectedTray } from "../../ui/SelectedTray";
 import { SlideGallery } from "../../ui/SlideGallery";
 import { Summary } from "../../ui/Summary";
 import { ErrorBanner } from "../../ui/ErrorBanner";
+import { HistoryIcon } from "../../ui/icons";
 import { underratedScore } from "../../lib/types";
 import {
   GridIcon,
@@ -20,12 +21,21 @@ import {
   ChevronRightIcon,
 } from "../../ui/icons";
 
-type Tab = "browse" | "picks" | "create";
+type Tab = "browse" | "picks" | "create" | "history";
 
 // Option A — "Pocket DJ": app-like, thumb-first. Bottom tabs, album-art-forward
 // browse grid, a floating picks pill, and a cover-preview hero on Create.
 export function PocketDJ({ r }: { r: RecapState }) {
   const [tab, setTab] = useState<Tab>("browse");
+  const historyLoaded = useRef(false);
+
+  // Load recap history lazily when first visiting the History tab.
+  useEffect(() => {
+    if (tab === "history" && !historyLoaded.current) {
+      historyLoaded.current = true;
+      r.loadRecapHistory();
+    }
+  }, [tab, r, r.loadRecapHistory]);
 
   return (
     <div className="min-h-screen bg-[#0b0b12] pb-28 font-sans text-zinc-100">
@@ -41,6 +51,7 @@ export function PocketDJ({ r }: { r: RecapState }) {
         {tab === "browse" && <BrowseGrid r={r} />}
         {tab === "picks" && <PicksTab r={r} />}
         {tab === "create" && <CreateTab r={r} />}
+        {tab === "history" && <HistoryTab r={r} />}
       </main>
 
       {/* Floating picks pill — review your selection from anywhere. */}
@@ -192,6 +203,11 @@ function BrowseGrid({ r }: { r: RecapState }) {
                 <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300">
                   {track.primary_bucket}
                 </span>
+                {track.recently_featured && (
+                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+                    Featured {track.times_featured > 1 ? `×${track.times_featured}` : ""}
+                  </span>
+                )}
                 {track.last_featured && (
                   <span className="rounded bg-fuchsia-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300">
                     Featured
@@ -469,6 +485,117 @@ function MissingCoverRow({
   );
 }
 
+// ---- History --------------------------------------------------------------
+
+function HistoryTab({ r }: { r: RecapState }) {
+  return (
+    <div className="flex flex-col gap-4 pt-2">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-2xl font-bold text-white">Recap history</h2>
+        {r.selectedRecapId && (
+          <button
+            type="button"
+            onClick={() => r.selectRecap(null)}
+            className="text-xs font-bold text-zinc-400 hover:text-white"
+          >
+            Back
+          </button>
+        )}
+      </div>
+
+      {r.selectedRecapId ? (
+        <HistoryRecapDetail r={r} />
+      ) : (
+        <HistoryRecapList r={r} />
+      )}
+    </div>
+  );
+}
+
+function HistoryRecapList({ r }: { r: RecapState }) {
+  if (r.recapHistoryLoading) {
+    return (
+      <div className="flex flex-col gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="animate-pulse rounded-xl border border-white/5 bg-white/5 p-4">
+            <div className="h-4 w-1/3 rounded bg-white/10" />
+            <div className="mt-2 h-3 w-1/4 rounded bg-white/5" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (r.recapHistory.length === 0) {
+    return (
+      <EmptyState
+        title="No past recaps"
+        body="Generate a recap to see it here."
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {r.recapHistory.map((entry) => (
+        <button
+          key={entry.recap_id}
+          type="button"
+          onClick={() => r.selectRecap(entry.recap_id)}
+          className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.02] p-4 text-left transition-colors hover:border-violet-500/40 hover:bg-white/5"
+        >
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-semibold text-white">{entry.date}</span>
+            <span className="text-xs text-zinc-500">{entry.slide_count} slide{entry.slide_count !== 1 ? "s" : ""}</span>
+          </div>
+          <ChevronRightIcon className="h-4 w-4 text-zinc-600" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function HistoryRecapDetail({ r }: { r: RecapState }) {
+  if (r.selectedRecapLoading) {
+    return (
+      <div className="grid grid-cols-2 gap-3 pt-2 sm:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="aspect-square animate-pulse rounded-2xl bg-white/5" />
+        ))}
+      </div>
+    );
+  }
+
+  if (r.selectedRecapSlides.length === 0) {
+    return <EmptyState title="No slides found" body="This recap may have been deleted." />;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {r.selectedRecapSlides.map((url, i) => (
+          <a
+            key={url}
+            href={`${r.apiBase}${url}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex flex-col gap-1.5"
+          >
+            <img
+              src={`${r.apiBase}${url}`}
+              alt={`Slide ${i + 1}`}
+              className="w-full rounded-xl border border-zinc-800 transition-colors group-hover:border-violet-500/60"
+            />
+            <span className="text-center text-[11px] font-medium text-zinc-500">
+              Slide {i + 1}
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ---- Chrome ---------------------------------------------------------------
 
 function EmptyState({ title, body }: { title: string; body: string }) {
@@ -496,10 +623,11 @@ function TabBar({
     { id: "browse", label: "Browse", Icon: GridIcon },
     { id: "picks", label: "Picks", Icon: StackIcon, badge: pickCount },
     { id: "create", label: "Create", Icon: WandIcon },
+    { id: "history", label: "History", Icon: HistoryIcon },
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0b0b12]/85 pb-safe backdrop-blur-lg">
-      <div className="mx-auto grid max-w-3xl grid-cols-3">
+      <div className="mx-auto grid max-w-3xl grid-cols-4">
         {items.map(({ id, label, Icon, badge }) => {
           const active = tab === id;
           return (

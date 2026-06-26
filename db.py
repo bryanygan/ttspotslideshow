@@ -373,6 +373,26 @@ def featured_history(conn: sqlite3.Connection) -> dict:
     return {r["track_key"]: r["last_featured_date"] for r in rows}
 
 
+def recent_featured_history(conn: sqlite3.Connection, last_n_days: int = 14) -> dict:
+    """Return {track_key: {"last_featured_date": str, "times_featured": int}} for tracks
+    featured within the last N days."""
+    from datetime import timedelta, date
+
+    cutoff = (date.today() - timedelta(days=last_n_days)).isoformat()
+    rows = conn.execute(
+        "SELECT track_key, last_featured_date, times_featured FROM featured_tracks "
+        "WHERE last_featured_date >= ?",
+        (cutoff,),
+    ).fetchall()
+    return {
+        r["track_key"]: {
+            "last_featured_date": r["last_featured_date"],
+            "times_featured": r["times_featured"],
+        }
+        for r in rows
+    }
+
+
 def record_featured(conn: sqlite3.Connection, track_keys: list[str],
                     run_date: str) -> None:
     """Record that the given track_keys were featured on run_date (YYYY-MM-DD)."""
@@ -428,21 +448,6 @@ def window_track_candidates(conn: sqlite3.Connection, start_unix: int) -> list:
             g["album_art_url"] = r["album_art_url"]
             g["popularity"] = r["popularity"]
     return list(groups.values())
-
-
-def random_unique_tracks(conn: sqlite3.Connection, limit: int = 100) -> list:
-    """Return a list of limit random unique tracks from the plays table."""
-    rows = conn.execute(
-        """
-        SELECT name, artist, MAX(album_art_url) as album_art_url
-        FROM plays
-        GROUP BY artist, name
-        ORDER BY RANDOM()
-        LIMIT ?
-        """,
-        (limit,)
-    ).fetchall()
-    return [{"title": r[0], "artist": r[1], "album_art_url": r[2]} for r in rows]
 
 
 def update_track_art(conn: sqlite3.Connection, artist: str, name: str, album_art_url: str) -> None:

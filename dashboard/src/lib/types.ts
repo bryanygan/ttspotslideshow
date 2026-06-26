@@ -10,6 +10,8 @@ export interface Candidate {
   primary_bucket: string;
   popularity: number;
   last_featured: string | null;
+  recently_featured: boolean;
+  times_featured: number;
 }
 
 export type SortBy = "plays" | "underrated";

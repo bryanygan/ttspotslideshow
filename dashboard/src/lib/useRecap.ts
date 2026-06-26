@@ -7,7 +7,10 @@ import {
   saveItunesUrl,
   uploadArt,
   uploadOcrScreenshot,
+  fetchRecapHistory,
+  fetchRecapSlides,
 } from "./api";
+import type { RecapHistoryEntry } from "./api";
 import { PRESETS } from "./presets";
 
 const API_BASE_KEY = "api_base";
@@ -87,6 +90,16 @@ export interface RecapState {
   runOcr: (file: File) => Promise<void>;
   addOcrTracksToSelection: () => void;
   clearOcrTracks: () => void;
+
+  // Recap history
+  recapHistory: RecapHistoryEntry[];
+  recapHistoryLoading: boolean;
+  recapHistoryError: string | null;
+  loadRecapHistory: () => void;
+  selectedRecapId: string | null;
+  selectedRecapSlides: string[];
+  selectedRecapLoading: boolean;
+  selectRecap: (recapId: string | null) => void;
 }
 
 export function useRecap(): RecapState {
@@ -124,6 +137,13 @@ export function useRecap(): RecapState {
   const [ocrTracks, setOcrTracks] = useState<Candidate[]>([]);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
+
+  const [recapHistory, setRecapHistory] = useState<RecapHistoryEntry[]>([]);
+  const [recapHistoryLoading, setRecapHistoryLoading] = useState(false);
+  const [recapHistoryError, setRecapHistoryError] = useState<string | null>(null);
+  const [selectedRecapId, setSelectedRecapId] = useState<string | null>(null);
+  const [selectedRecapSlides, setSelectedRecapSlides] = useState<string[]>([]);
+  const [selectedRecapLoading, setSelectedRecapLoading] = useState(false);
 
   const setApiBase = useCallback((v: string) => {
     let normalized = v.trim();
@@ -433,6 +453,37 @@ export function useRecap(): RecapState {
     setOcrError(null);
   }, []);
 
+  const loadRecapHistory = useCallback(async () => {
+    setRecapHistoryLoading(true);
+    setRecapHistoryError(null);
+    try {
+      const history = await fetchRecapHistory(apiBase);
+      setRecapHistory(history);
+    } catch (err) {
+      setRecapHistoryError(err instanceof Error ? err.message : "Failed to load recap history.");
+    } finally {
+      setRecapHistoryLoading(false);
+    }
+  }, [apiBase]);
+
+  const selectRecap = useCallback(
+    async (recapId: string | null) => {
+      setSelectedRecapId(recapId);
+      setSelectedRecapSlides([]);
+      if (!recapId) return;
+      setSelectedRecapLoading(true);
+      try {
+        const slides = await fetchRecapSlides(apiBase, recapId);
+        setSelectedRecapSlides(slides);
+      } catch {
+        setSelectedRecapSlides([]);
+      } finally {
+        setSelectedRecapLoading(false);
+      }
+    },
+    [apiBase],
+  );
+
   return {
     apiBase,
     setApiBase,
@@ -489,5 +540,13 @@ export function useRecap(): RecapState {
     runOcr,
     addOcrTracksToSelection,
     clearOcrTracks,
+    recapHistory,
+    recapHistoryLoading,
+    recapHistoryError,
+    loadRecapHistory,
+    selectedRecapId,
+    selectedRecapSlides,
+    selectedRecapLoading,
+    selectRecap,
   };
 }

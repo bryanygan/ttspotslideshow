@@ -213,3 +213,29 @@ export async function uploadOcrScreenshot(
   const data = await resp.json();
   return data.tracks ?? [];
 }
+
+export interface RecapHistoryEntry {
+  recap_id: string;
+  date: string;
+  slide_count: number;
+  generated_at: number;
+}
+
+export async function fetchRecapHistory(
+  apiBase: string,
+): Promise<RecapHistoryEntry[]> {
+  const resp = await fetch(`${apiBase}/api/recap-history`);
+  if (!resp.ok) throw new Error(`Couldn't fetch recap history (HTTP ${resp.status}).`);
+  const data = await resp.json();
+  return data.history ?? [];
+}
+
+export async function fetchRecapSlides(
+  apiBase: string,
+  recapId: string,
+): Promise<string[]> {
+  const resp = await fetch(`${apiBase}/api/recap-history/${recapId}/slides`);
+  if (!resp.ok) throw new Error(`Couldn't fetch recap slides (HTTP ${resp.status}).`);
+  const data = await resp.json();
+  return data.slides ?? [];
+}
