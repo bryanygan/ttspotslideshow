@@ -7,7 +7,6 @@ import {
   uploadArt,
 } from "./api";
 import { PRESETS } from "./presets";
-import { windowLongLabel } from "./constants";
 
 const API_BASE_KEY = "api_base";
 const DEFAULT_API_BASE = "http://localhost:8000";
@@ -83,8 +82,8 @@ export function useRecap(): RecapState {
   const [quickSelectCount, setQuickSelectCount] = useState(16);
 
   const [includeCover, setIncludeCover] = useState(true);
-  const [coverTitle, setCoverTitle] = useState("WEEKLY ROTATION");
-  const [coverSubtitle, setCoverSubtitle] = useState("Last 7 Days");
+  const [coverTitle, setCoverTitle] = useState("");
+  const [coverSubtitle, setCoverSubtitle] = useState("");
   const [coverTheme, setCoverTheme] = useState("purple");
   const [watermark, setWatermark] = useState("");
 
@@ -93,8 +92,17 @@ export function useRecap(): RecapState {
   const [slideUrls, setSlideUrls] = useState<string[]>([]);
 
   const setApiBase = useCallback((v: string) => {
-    setApiBaseRaw(v);
-    localStorage.setItem(API_BASE_KEY, v);
+    let normalized = v.trim();
+    if (normalized) {
+      if (!/^https?:\/\//i.test(normalized)) {
+        normalized = `http://${normalized}`;
+      }
+      normalized = normalized.replace(/\/+$/, "");
+    } else {
+      normalized = DEFAULT_API_BASE;
+    }
+    setApiBaseRaw(normalized);
+    localStorage.setItem(API_BASE_KEY, normalized);
   }, []);
 
   const refetch = useCallback(async () => {
@@ -117,16 +125,6 @@ export function useRecap(): RecapState {
   useEffect(() => {
     refetch();
   }, [refetch]);
-
-  // Keep the cover subtitle in sync with the window while it still looks like
-  // the auto-generated default ("Last N Days"); leave manual edits alone.
-  useEffect(() => {
-    setCoverSubtitle((prev) =>
-      prev === "" || /^Last \d+ (Days|Months|Year)$/i.test(prev)
-        ? windowLongLabel(days)
-        : prev,
-    );
-  }, [days]);
 
   const sortedCandidates = useMemo(() => {
     const list = [...candidates];

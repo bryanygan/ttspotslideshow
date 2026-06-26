@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { RecapState } from "../../lib/useRecap";
 import { WINDOWS, windowLabel, COVER_THEMES } from "../../lib/constants";
 import { resolveArt } from "../../lib/api";
@@ -10,15 +10,14 @@ import { SelectedTray } from "../../ui/SelectedTray";
 import { SlideGallery } from "../../ui/SlideGallery";
 import { Summary } from "../../ui/Summary";
 import { ErrorBanner } from "../../ui/ErrorBanner";
-import { Spinner } from "../../ui/Spinner";
 import { underratedScore } from "../../lib/types";
 import {
   GridIcon,
   StackIcon,
   WandIcon,
   CheckIcon,
-  ChevronUpIcon,
   MusicIcon,
+  ChevronRightIcon,
 } from "../../ui/icons";
 
 type Tab = "browse" | "picks" | "create";
@@ -49,10 +48,10 @@ export function PocketDJ({ r }: { r: RecapState }) {
         <button
           type="button"
           onClick={() => setTab("picks")}
-          className="fixed bottom-24 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-900/50 transition-transform active:scale-95"
+          className="fixed bottom-20 right-4 z-40 flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-600 px-3.5 py-2 text-xs font-bold text-white shadow-lg shadow-violet-950/50 hover:bg-violet-500 transition-all active:scale-95"
         >
-          <span>{r.selectedKeys.size} picked · review</span>
-          <ChevronUpIcon className="h-4 w-4" />
+          <span>{r.selectedKeys.size} picked · Review</span>
+          <ChevronRightIcon className="h-3.5 w-3.5" />
         </button>
       )}
 
@@ -246,6 +245,30 @@ function CreateTab({ r }: { r: RecapState }) {
   const theme = COVER_THEMES.find((t) => t.value === r.coverTheme) ?? COVER_THEMES[0];
   const canGenerate = r.selectedKeys.size > 0 && !r.generating;
 
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    let interval: any;
+    if (r.generating) {
+      setProgress(0);
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev < 40) {
+            return prev + Math.floor(Math.random() * 10 + 5);
+          } else if (prev < 85) {
+            return prev + Math.floor(Math.random() * 3 + 1);
+          } else if (prev < 95) {
+            return prev + 1;
+          }
+          return prev;
+        });
+      }, 150);
+    } else {
+      setProgress(0);
+    }
+    return () => clearInterval(interval);
+  }, [r.generating]);
+
   // A representative sample of covers for the live preview. The real cover uses
   // a randomized all-time set rendered server-side; this just conveys the look.
   const previewArts = useMemo(() => {
@@ -306,21 +329,29 @@ function CreateTab({ r }: { r: RecapState }) {
         type="button"
         onClick={r.generate}
         disabled={!canGenerate}
-        className={`flex items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold transition-all ${
+        className={`relative overflow-hidden flex items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold transition-all ${
           canGenerate
             ? "bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-500 text-white shadow-lg shadow-violet-900/40 active:scale-[0.98]"
             : "cursor-not-allowed bg-white/5 text-zinc-600"
         }`}
       >
-        {r.generating ? (
-          <>
-            <Spinner className="h-5 w-5" /> Generating…
-          </>
-        ) : (
-          <>
-            <WandIcon className="h-5 w-5" /> Generate recap slides
-          </>
+        {/* Progress bar overlay */}
+        {r.generating && (
+          <div
+            className="absolute inset-y-0 left-0 bg-white/20 transition-all duration-300 ease-out"
+            style={{ width: `${progress}%` }}
+          />
         )}
+
+        <span className="relative z-10 flex items-center gap-2">
+          {r.generating ? (
+            <span>Generating… {progress}%</span>
+          ) : (
+            <>
+              <WandIcon className="h-5 w-5" /> Generate recap slides
+            </>
+          )}
+        </span>
       </button>
 
       <SlideGallery r={r} />

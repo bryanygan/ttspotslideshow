@@ -415,6 +415,7 @@ def window_track_candidates(conn: sqlite3.Connection, start_unix: int) -> list:
                 "album_art_url": r["album_art_url"],
                 "last_played_unix": unix,
                 "primary_bucket": genres.get(artist_key, "unknown"),
+                "popularity": r["popularity"],
             }
             continue
         g["play_count"] += 1
@@ -425,4 +426,5 @@ def window_track_candidates(conn: sqlite3.Connection, start_unix: int) -> list:
             g["title"] = r["name"]
             g["artist"] = r["artist"]
             g["album_art_url"] = r["album_art_url"]
+            g["popularity"] = r["popularity"]
     return list(groups.values())

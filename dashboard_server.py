@@ -65,28 +65,45 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
             return
 
-        # Fetch Spotify popularity in bulk
-        track_ids = [c["track_id"] for c in candidates if c.get("track_id")]
-        popularities = {}
-        if track_ids:
+        # Collect track IDs that don't have cached popularity in the DB
+        uncached_candidates = [c for c in candidates if c.get("track_id") and c.get("popularity") is None]
+        track_ids_to_fetch = [c["track_id"] for c in uncached_candidates]
+
+        # Initialize popularities dict with already cached database values
+        popularities = {c["track_id"]: c["popularity"] for c in candidates if c.get("track_id") and c.get("popularity") is not None}
+
+        if track_ids_to_fetch:
             try:
                 from spotify_client import get_client
 
                 sp = get_client()
+                fetched_popularities = {}
                 # Batch in chunks of 50
-                for i in range(0, len(track_ids), 50):
-                    chunk = track_ids[i : i + 50]
+                for i in range(0, len(track_ids_to_fetch), 50):
+                    chunk = track_ids_to_fetch[i : i + 50]
                     tracks_data = sp.tracks(chunk)
                     for t in tracks_data.get("tracks", []):
                         if t:
-                            popularities[t["id"]] = t.get("popularity", 50)
-            except Exception:
-                pass
+                            fetched_popularities[t["id"]] = t.get("popularity", 50)
+
+                # Write newly fetched popularities to the DB so they are cached!
+                if fetched_popularities:
+                    try:
+                        with db.connect() as conn:
+                            for tid, pop in fetched_popularities.items():
+                                conn.execute("UPDATE plays SET popularity = ? WHERE track_id = ?", (pop, tid))
+                            # Merge them into the local dictionary
+                            popularities.update(fetched_popularities)
+                    except Exception as db_err:
+                        print(f"Failed to cache popularities to DB: {db_err}", file=sys.stderr)
+            except Exception as sp_err:
+                print(f"Failed to fetch popularities from Spotify: {sp_err}", file=sys.stderr)
 
         # Decorate candidates with popularity, last_featured, and overrides details
         for c in candidates:
             tid = c.get("track_id")
-            c["popularity"] = popularities.get(tid, 50)
+            # If still None (e.g. no track_id or API failed), default to 50
+            c["popularity"] = popularities.get(tid) if popularities.get(tid) is not None else 50
             c["last_featured"] = featured.get(c["track_key"], None)
 
             # Check for manual cover art overrides

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRecap } from "./lib/useRecap";
 import { PocketDJ } from "./options/pocket/PocketDJ";
 import { Sheet } from "./ui/Sheet";
@@ -8,6 +8,14 @@ import { GearIcon, MusicIcon } from "./ui/icons";
 function App() {
   const r = useRecap();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tempApiBase, setTempApiBase] = useState(r.apiBase);
+
+  // Sync tempApiBase when the settings sheet is opened
+  useEffect(() => {
+    if (settingsOpen) {
+      setTempApiBase(r.apiBase);
+    }
+  }, [settingsOpen, r.apiBase]);
 
   return (
     <div>
@@ -47,8 +55,13 @@ function App() {
             </span>
             <input
               type="text"
-              value={r.apiBase}
-              onChange={(e) => r.setApiBase(e.target.value)}
+              value={tempApiBase}
+              onChange={(e) => setTempApiBase(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  r.setApiBase(tempApiBase);
+                }
+              }}
               placeholder="http://localhost:8000"
               className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm text-zinc-100 focus:border-violet-500 focus:outline-none"
             />
@@ -61,6 +74,7 @@ function App() {
           <button
             type="button"
             onClick={() => {
+              r.setApiBase(tempApiBase);
               r.refetch();
               setSettingsOpen(false);
             }}

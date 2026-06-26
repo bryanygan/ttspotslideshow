@@ -4,9 +4,23 @@ import { COVER_THEMES, HOOK_PRESETS } from "../lib/constants";
 // The TikTok cover + watermark form. Shared by both options (violet accent,
 // zinc surfaces) since the divergent identity lives in the browse/nav, not the
 // settings form.
+const SUBTITLE_PRESETS = [
+  "Last 7 Days",
+  "Last 14 Days",
+  "Last 30 Days",
+  "Last 90 Days",
+  "Last 6 Months",
+  "Last 1 Year",
+];
+
+// The TikTok cover + watermark form. Shared by both options (violet accent,
+// zinc surfaces) since the divergent identity lives in the browse/nav, not the
+// settings form.
 export function CoverControls({ r }: { r: RecapState }) {
   const inputClass =
     "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40";
+  const selectClass =
+    "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40";
   const labelClass =
     "text-[11px] font-semibold uppercase tracking-wider text-zinc-500";
 
@@ -31,24 +45,22 @@ export function CoverControls({ r }: { r: RecapState }) {
               value={r.coverTitle}
               onChange={(e) => r.setCoverTitle(e.target.value)}
               className={inputClass}
-              placeholder="WEEKLY ROTATION"
+              placeholder="Blank (type custom text)"
             />
-            <div className="flex flex-wrap gap-1.5">
+            <select
+              value={HOOK_PRESETS.includes(r.coverTitle) ? r.coverTitle : ""}
+              onChange={(e) => r.setCoverTitle(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Custom / Blank</option>
               {HOOK_PRESETS.map((hook) => (
-                <button
-                  key={hook}
-                  type="button"
-                  onClick={() => r.setCoverTitle(hook)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                    r.coverTitle === hook
-                      ? "border-violet-500 bg-violet-500/15 text-violet-200"
-                      : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                  }`}
-                >
+                <option key={hook} value={hook}>
                   {hook}
-                </button>
+                </option>
               ))}
-            </div>
+              <option value="WEEKLY RECAP">WEEKLY RECAP</option>
+              <option value="MONTHLY RECAP">MONTHLY RECAP</option>
+            </select>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -58,8 +70,20 @@ export function CoverControls({ r }: { r: RecapState }) {
               value={r.coverSubtitle}
               onChange={(e) => r.setCoverSubtitle(e.target.value)}
               className={inputClass}
-              placeholder="Last 7 Days"
+              placeholder="Blank (type custom subtitle)"
             />
+            <select
+              value={SUBTITLE_PRESETS.includes(r.coverSubtitle) ? r.coverSubtitle : ""}
+              onChange={(e) => r.setCoverSubtitle(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Custom / Blank</option>
+              {SUBTITLE_PRESETS.map((sub) => (
+                <option key={sub} value={sub}>
+                  {sub}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex flex-col gap-2">
