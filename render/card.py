@@ -1,4 +1,4 @@
-"""Render a single Spotify Now-Playing-style card (540x960)."""
+"""Render a single Spotify Now-Playing-style card (540x850)."""
 
 import random
 from pathlib import Path
@@ -8,10 +8,10 @@ from PIL import Image, ImageDraw
 from render.colors import dominant_color, clamp_color, vertical_gradient
 from render.fonts import load_font, truncate_to_width
 
-CARD_W, CARD_H = 540, 960
+CARD_W, CARD_H = 540, 850
 PAD = 32
-ART = 476
-ART_Y = 130
+ART = 460
+ART_Y = 88
 ART_RADIUS = 14
 
 WHITE = (255, 255, 255, 255)
@@ -108,7 +108,7 @@ def render_card(track: dict, art_path=None) -> Image.Image:
     artist_h = artist_bbox[3] - artist_bbox[1]
 
     # Layout positioning
-    text_y = 698
+    text_y = 600
 
     # Draw Title
     draw_overlay.text(
