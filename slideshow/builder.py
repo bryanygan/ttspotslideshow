@@ -1,17 +1,44 @@
 """Orchestrate selection -> art -> render -> collage -> dated slide folder."""
 
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
 import db
+from slideshow.caption import generate_caption
 from slideshow.window import resolve_window
 from slideshow.selector import select_tracks
 from slideshow.art_resolve import resolve_art_url
 from render.art import load_art, find_override_art
 from render.card import render_card
 from render.collage import collage
+
+
+class ProgressEmitter:
+    """Thread-safe progress callback that emits stage/percent/eta events."""
+
+    def __init__(self, callback=None):
+        self._callback = callback
+        self._lock = __import__("threading").Lock()
+        self._start = time.monotonic()
+
+    def emit(self, stage: str, current: int, total: int, detail: str = ""):
+        pct = int((current / total) * 100) if total > 0 else 0
+        elapsed = time.monotonic() - self._start
+        eta = None
+        if pct > 0 and current > 0:
+            eta = round(elapsed / current * (total - current), 1)
+        if self._callback:
+            self._callback({
+                "stage": stage,
+                "progress": pct,
+                "current": current,
+                "total": total,
+                "eta": eta,
+                "detail": detail,
+            })
 
 
 class MissingCoverError(Exception):
@@ -222,7 +249,8 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
 
 def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                      overrides_dir=None, cover_title=None, cover_subtitle=None,
-                     cover_theme=None, watermark=None, cover_pool=None):
+                     cover_theme=None, watermark=None, cover_pool=None,
+                     progress=None):
     """Resolve art, render cards, write 4-up slides, and record featured tracks.
 
     Returns (slide_count, genre_spread). Shared by build_slideshow and
@@ -237,6 +265,10 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
     resolved_urls = [None] * len(rendered)
     art_paths = [None] * len(rendered)
     to_download = {}  # type: dict[str, list[int]]
+
+    total_tracks = len(rendered)
+    if progress:
+        progress.emit("resolving", 0, total_tracks, "Resolving cover art…")
 
     for idx, track in enumerate(rendered):
         override_path = find_override_art(track["artist"], track["title"], overrides_dir)
@@ -254,10 +286,13 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                     to_download.setdefault(url, []).append(idx)
             else:
                 art_paths[idx] = None
+        if progress:
+            progress.emit("resolving", idx + 1, total_tracks, f"Resolved {idx + 1}/{total_tracks}")
 
     if to_download:
         from concurrent.futures import ThreadPoolExecutor
         unique_urls = list(to_download.keys())
+        downloaded = [0]
         with ThreadPoolExecutor(max_workers=8) as executor:
             future_to_url = {
                 executor.submit(load_art, url, cache_dir): url
@@ -271,6 +306,10 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                     local_path = None
                 for idx in to_download[url]:
                     art_paths[idx] = local_path
+                downloaded[0] += 1
+                if progress:
+                    progress.emit("downloading", downloaded[0], len(unique_urls),
+                                  f"Downloaded {downloaded[0]}/{len(unique_urls)} covers")
 
     # Check for iTunes covers (need user confirmation) and fully missing covers
     from slideshow.art_resolve import _is_itunes_url
@@ -298,17 +337,26 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
     if missing_tracks:
         raise MissingCoverError(missing_tracks)
 
+    # Render cards
+    if progress:
+        progress.emit("rendering", 0, total_tracks, "Rendering cards…")
+
     cards = []
     for idx, track in enumerate(rendered):
         cards.append(render_card(track, art_path=art_paths[idx]))
+        if progress:
+            progress.emit("rendering", idx + 1, total_tracks,
+                          f"Rendered card {idx + 1}/{total_tracks}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     slide_count = 0
+    num_collages = (len(cards) + 3) // 4  # cover + 4-up slides
+    collage_done = 0
 
-    # Draw and save the cover slide first if requested. A cover is rendered
-    # whenever cover_title is not None (an empty string still produces a
-    # text-free collage cover); None means "no cover slide".
+    # Draw and save the cover slide first if requested.
     if cover_title is not None:
+        if progress:
+            progress.emit("collage", 0, num_collages, "Building cover slide…")
         from render.cover import render_cover_collage
         art_paths_collage = _collage_art_paths(conn, cache_dir, overrides_dir, cover_pool=cover_pool)
         cover = render_cover_collage(
@@ -317,10 +365,17 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
         )
         slide_count += 1
         cover.save(out_dir / f"slide_{slide_count}.png")
+        collage_done = 1
+        if progress:
+            progress.emit("collage", collage_done, num_collages, "Cover slide done")
 
     for i in range(0, len(cards), 4):
         slide_count += 1
+        collage_done += 1
         collage(cards[i:i + 4], watermark=watermark).save(out_dir / f"slide_{slide_count}.png")
+        if progress:
+            progress.emit("collage", collage_done, num_collages,
+                          f"Slide {slide_count} composed")
 
     db.record_featured(conn, [t["track_key"] for t in rendered], featured_date)
 
@@ -334,7 +389,8 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
 def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
                     today=None, fetch=None, cache_dir=None, overrides_dir=None,
                     bypass_novelty=False, cover_title=None, cover_subtitle=None,
-                    cover_theme=None, watermark=None) -> dict:
+                    cover_theme=None, watermark=None, playlist_id=None,
+                    progress=None) -> dict:
     """Build the dated slide set. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -362,10 +418,18 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
     slide_count, spread = _render_and_save(
         conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
         cover_title=cover_title, cover_subtitle=cover_subtitle,
-        cover_theme=cover_theme, watermark=watermark
+        cover_theme=cover_theme, watermark=watermark, progress=progress
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
+
+    # Sync tracks to Spotify playlist (best-effort, non-fatal)
+    if playlist_id is not None:
+        from slideshow.playlist_sync import sync_playlist
+        playlist_url = sync_playlist(conn, rendered, playlist_id=playlist_id)
+        if playlist_url:
+            summary["playlist_url"] = playlist_url
+
     return summary
 
 
@@ -373,11 +437,12 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
                           fetch=None, cache_dir=None, overrides_dir=None,
                           cover_title=None, cover_subtitle=None,
                           cover_theme=None, watermark=None,
-                          recap_id=None, cover_pool=None) -> dict:
+                          recap_id=None, cover_pool=None, playlist_id=None,
+                          export_video=False, progress=None) -> dict:
     """Build slides for specific selected tracks. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
-    
+
     if not recap_id:
         import time
         import uuid
@@ -406,8 +471,28 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
     slide_count, spread = _render_and_save(
         conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
         cover_title=cover_title, cover_subtitle=cover_subtitle,
-        cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool
+        cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool,
+        progress=progress
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
+
+    # Sync tracks to Spotify playlist (best-effort, non-fatal)
+    if playlist_id is not None:
+        from slideshow.playlist_sync import sync_playlist
+        playlist_url = sync_playlist(conn, rendered, playlist_id=playlist_id)
+        if playlist_url:
+            summary["playlist_url"] = playlist_url
+
+    # Export video (best-effort, non-fatal)
+    if export_video:
+        from render.video_export import export_video
+        slide_paths = [out_dir / f"slide_{i}.png" for i in range(1, slide_count + 1)]
+        video_path = export_video(slide_paths, out_dir / "recap.mp4")
+        if video_path:
+            summary["video_path"] = str(video_path)
+
+    # Generate TikTok-ready caption with hashtags
+    summary["caption"] = generate_caption(rendered, cover_title=cover_title)
+
     return summary

@@ -3,7 +3,7 @@ import type { Candidate, GenerateSummary, SortBy } from "./types";
 import { underratedScore } from "./types";
 import {
   fetchCandidates,
-  generateRecap,
+  generateRecapStream,
   saveItunesUrl,
   uploadArt,
   uploadOcrScreenshot,
@@ -65,6 +65,12 @@ export interface RecapState {
   leftover: number;
   generate: () => void;
 
+  // Real-time progress (SSE)
+  progress: number;
+  progressStage: string;
+  progressDetail: string;
+  progressEta: number | null;
+
   uploadArtFor: (track: Candidate, file: File) => void;
   missingCovers: Array<{ artist: string; title: string; track_key: string }>;
   setMissingCovers: (v: Array<{ artist: string; title: string; track_key: string }>) => void;
@@ -109,6 +115,11 @@ export function useRecap(): RecapState {
   const [slideUrls, setSlideUrls] = useState<string[]>([]);
   const [missingCovers, setMissingCovers] = useState<Array<{ artist: string; title: string; track_key: string }>>([]);
   const [unconfirmedCovers, setUnconfirmedCovers] = useState<Array<{ artist: string; title: string; track_key: string; itunes_url: string }>>([]);
+
+  const [progress, setProgress] = useState(0);
+  const [progressStage, setProgressStage] = useState("");
+  const [progressDetail, setProgressDetail] = useState("");
+  const [progressEta, setProgressEta] = useState<number | null>(null);
 
   const [ocrTracks, setOcrTracks] = useState<Candidate[]>([]);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -283,14 +294,23 @@ export function useRecap(): RecapState {
     setSlideUrls([]);
     setMissingCovers([]);
     setUnconfirmedCovers([]);
+    setProgress(0);
+    setProgressStage("");
+    setProgressDetail("");
+    setProgressEta(null);
     try {
-      const result = await generateRecap(apiBase, {
+      const result = await generateRecapStream(apiBase, {
         tracks: selectedTracks,
         cover_title: includeCover ? coverTitle : null,
         cover_subtitle: includeCover ? coverSubtitle : null,
         cover_theme: includeCover ? coverTheme : null,
         watermark: watermark.trim() || null,
         cover_pool: candidates.map((c) => c.album_art_url).filter(Boolean),
+      }, (evt) => {
+        setProgress(evt.progress);
+        setProgressStage(evt.stage);
+        setProgressDetail(evt.detail);
+        setProgressEta(evt.eta);
       });
       setSummary(result.summary);
       setSlideUrls(result.slides);
@@ -453,6 +473,10 @@ export function useRecap(): RecapState {
     slideCount,
     leftover,
     generate,
+    progress,
+    progressStage,
+    progressDetail,
+    progressEta,
     uploadArtFor,
     missingCovers,
     setMissingCovers,

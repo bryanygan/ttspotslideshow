@@ -1,6 +1,8 @@
 import json
 import sys
 import time
+import threading
+import queue
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
@@ -8,7 +10,7 @@ from render.art import find_override_art
 
 import config
 import db
-from slideshow.builder import build_recap_slideshow
+from slideshow.builder import build_recap_slideshow, ProgressEmitter
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -43,6 +45,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/generate":
             self.handle_post_generate()
+        elif parsed.path == "/api/generate-stream":
+            self.handle_post_generate_stream()
         elif parsed.path == "/api/overrides/upload":
             self.handle_post_override_upload()
         elif parsed.path == "/api/art-test/save":
@@ -143,6 +147,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             cover_theme = payload.get("cover_theme", None)
             watermark = payload.get("watermark", None)
             cover_pool = payload.get("cover_pool", None)
+            playlist_id = payload.get("playlist_id", None)
+            export_video = payload.get("export_video", False)
         except Exception as e:
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
@@ -172,7 +178,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     conn, out_root, tracks,
                     cover_title=cover_title, cover_subtitle=cover_subtitle,
                     cover_theme=cover_theme, watermark=watermark,
-                    cover_pool=cover_pool
+                    cover_pool=cover_pool, playlist_id=playlist_id,
+                    export_video=export_video,
                 )
         except Exception as e:
             from slideshow.builder import MissingCoverError, UnconfirmedCoverError
@@ -222,6 +229,117 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 {"status": "success", "summary": summary, "slides": slides}
             ).encode("utf-8")
         )
+
+    def handle_post_generate_stream(self):
+        """SSE-based streaming endpoint that emits real-time progress events
+        during slideshow generation, then returns the final result."""
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8")
+        try:
+            payload = json.loads(body)
+            tracks = payload.get("tracks", [])
+            cover_title = payload.get("cover_title", None)
+            cover_subtitle = payload.get("cover_subtitle", None)
+            cover_theme = payload.get("cover_theme", None)
+            watermark = payload.get("watermark", None)
+            cover_pool = payload.get("cover_pool", None)
+            playlist_id = payload.get("playlist_id", None)
+            export_video = payload.get("export_video", False)
+        except Exception as e:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps({"error": f"Invalid JSON payload: {e}"}).encode("utf-8")
+            )
+            return
+
+        if not tracks:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps({"error": "No tracks provided for generating recap."}).encode("utf-8")
+            )
+            return
+
+        # Set up SSE response
+        q = queue.Queue()
+        result_holder = {"summary": None, "slides": None, "error": None}
+
+        def progress_cb(event):
+            q.put(("progress", event))
+
+        emitter = ProgressEmitter(callback=progress_cb)
+
+        def run_generate():
+            try:
+                with db.connect() as conn:
+                    out_root = Path("output") / "slides"
+                    summary = build_recap_slideshow(
+                        conn, out_root, tracks,
+                        cover_title=cover_title, cover_subtitle=cover_subtitle,
+                        cover_theme=cover_theme, watermark=watermark,
+                        cover_pool=cover_pool, playlist_id=playlist_id,
+                        export_video=export_video,
+                        progress=emitter,
+                    )
+                recap_id = Path(summary["out_dir"]).name
+                slides = [
+                    f"/api/slides/{recap_id}/slide_{i}.png"
+                    for i in range(1, summary["slide_count"] + 1)
+                ]
+                result_holder["summary"] = summary
+                result_holder["slides"] = slides
+            except Exception as e:
+                from slideshow.builder import MissingCoverError, UnconfirmedCoverError
+                if isinstance(e, UnconfirmedCoverError):
+                    result_holder["error"] = {
+                        "type": "unconfirmed_covers",
+                        "unconfirmed_covers": e.unconfirmed_tracks,
+                    }
+                elif isinstance(e, MissingCoverError):
+                    result_holder["error"] = {
+                        "type": "missing_covers",
+                        "missing_covers": e.missing_tracks,
+                    }
+                else:
+                    result_holder["error"] = {"type": "error", "message": str(e)}
+            finally:
+                q.put(("done", None))
+
+        t = threading.Thread(target=run_generate, daemon=True)
+        t.start()
+
+        # Send SSE headers
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")  # disable nginx buffering
+        self.end_headers()
+
+        try:
+            while True:
+                msg_type, msg_data = q.get(timeout=120)
+                if msg_type == "progress":
+                    event_data = f"data: {json.dumps(msg_data)}\n\n"
+                    self.wfile.write(event_data.encode("utf-8"))
+                    self.wfile.flush()
+                elif msg_type == "done":
+                    if result_holder["error"]:
+                        err = result_holder["error"]
+                        final = {"event": "error", **err}
+                    else:
+                        final = {"event": "complete", "summary": result_holder["summary"],
+                                 "slides": result_holder["slides"]}
+                    self.wfile.write(f"data: {json.dumps(final)}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                    break
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # client disconnected
+        except Exception:
+            pass
 
     def handle_get_slide(self, parsed):
         """Serve a rendered slide PNG from output/slides/<recap-id>/<file>."""

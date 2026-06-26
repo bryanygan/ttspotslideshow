@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useRef } from "react";
 import type { RecapState } from "../../lib/useRecap";
 import { WINDOWS, windowLabel, COVER_THEMES } from "../../lib/constants";
 import { resolveArt } from "../../lib/api";
@@ -245,29 +245,14 @@ function CreateTab({ r }: { r: RecapState }) {
   const theme = COVER_THEMES.find((t) => t.value === r.coverTheme) ?? COVER_THEMES[0];
   const canGenerate = r.selectedKeys.size > 0 && !r.generating;
 
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    let interval: any;
-    if (r.generating) {
-      setProgress(0);
-      interval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev < 40) {
-            return prev + Math.floor(Math.random() * 10 + 5);
-          } else if (prev < 85) {
-            return prev + Math.floor(Math.random() * 3 + 1);
-          } else if (prev < 95) {
-            return prev + 1;
-          }
-          return prev;
-        });
-      }, 150);
-    } else {
-      setProgress(0);
-    }
-    return () => clearInterval(interval);
-  }, [r.generating]);
+  // Format ETA seconds into a human-readable string
+  const formatEta = (seconds: number | null): string => {
+    if (seconds == null) return "";
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    const m = Math.floor(seconds / 60);
+    const s = Math.round(seconds % 60);
+    return `${m}m ${s}s`;
+  };
 
   // A representative sample of covers for the live preview. The real cover uses
   // a randomized all-time set rendered server-side; this just conveys the look.
@@ -391,13 +376,25 @@ function CreateTab({ r }: { r: RecapState }) {
         {r.generating && (
           <div
             className="absolute inset-y-0 left-0 bg-white/20 transition-all duration-300 ease-out"
-            style={{ width: `${progress}%` }}
+            style={{ width: `${r.progress}%` }}
           />
         )}
 
-        <span className="relative z-10 flex items-center gap-2">
+        <span className="relative z-10 flex flex-col items-center gap-0.5">
           {r.generating ? (
-            <span>Generating… {progress}%</span>
+            <>
+              <span>Generating… {r.progress}%</span>
+              {r.progressEta != null && (
+                <span className="text-[10px] font-medium text-white/70">
+                  Est. {formatEta(r.progressEta)} remaining
+                </span>
+              )}
+              {r.progressDetail && (
+                <span className="text-[9px] font-medium text-white/50">
+                  {r.progressDetail}
+                </span>
+              )}
+            </>
           ) : (
             <>
               <WandIcon className="h-5 w-5" /> Generate recap slides

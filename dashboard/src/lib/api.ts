@@ -73,6 +73,90 @@ export async function generateRecap(
   return { summary: data.summary, slides: data.slides ?? [] };
 }
 
+export interface ProgressEvent {
+  stage: string;
+  progress: number;
+  current: number;
+  total: number;
+  eta: number | null;
+  detail: string;
+}
+
+export async function generateRecapStream(
+  apiBase: string,
+  payload: GeneratePayload,
+  onProgress: (evt: ProgressEvent) => void,
+): Promise<GenerateResult> {
+  const resp = await fetch(`${apiBase}/api/generate-stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    if (err.error === "unconfirmed_covers" && Array.isArray(err.unconfirmed_covers)) {
+      throw new UnconfirmedCoverError(err.unconfirmed_covers);
+    }
+    if (err.error === "Missing album cover art" && Array.isArray(err.missing_covers)) {
+      throw new MissingCoverError(err.error, err.missing_covers);
+    }
+    throw new Error(err.error || `Generation failed (HTTP ${resp.status}).`);
+  }
+
+  const reader = resp.body?.getReader();
+  if (!reader) {
+    throw new Error("Response body is not readable.");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    // Keep the last (possibly incomplete) line in the buffer
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const jsonStr = line.slice(6);
+      let evt: any;
+      try {
+        evt = JSON.parse(jsonStr);
+      } catch {
+        continue;
+      }
+
+      if (evt.event === "complete") {
+        return { summary: evt.summary, slides: evt.slides ?? [] };
+      }
+      if (evt.event === "error") {
+        if (evt.type === "unconfirmed_covers") {
+          throw new UnconfirmedCoverError(evt.unconfirmed_covers);
+        }
+        if (evt.type === "missing_covers") {
+          throw new MissingCoverError("Missing album cover art", evt.missing_covers);
+        }
+        throw new Error(evt.message || "Generation failed.");
+      }
+      // Regular progress event
+      onProgress({
+        stage: evt.stage,
+        progress: evt.progress,
+        current: evt.current,
+        total: evt.total,
+        eta: evt.eta,
+        detail: evt.detail,
+      });
+    }
+  }
+
+  throw new Error("Stream ended without a complete or error event.");
+}
+
 // Upload a replacement cover for one track. The backend keys the override on
 // artist + title via headers and stores the raw image body.
 export async function uploadArt(
