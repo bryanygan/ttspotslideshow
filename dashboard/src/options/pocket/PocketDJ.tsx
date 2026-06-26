@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { RecapState } from "../../lib/useRecap";
 import { WINDOWS, windowLabel, COVER_THEMES } from "../../lib/constants";
+import { resolveArt } from "../../lib/api";
 import { AlbumArt } from "../../ui/AlbumArt";
 import { ArtUploadButton } from "../../ui/ArtUploadButton";
 import { CoverControls } from "../../ui/CoverControls";
@@ -245,26 +246,53 @@ function CreateTab({ r }: { r: RecapState }) {
   const theme = COVER_THEMES.find((t) => t.value === r.coverTheme) ?? COVER_THEMES[0];
   const canGenerate = r.selectedKeys.size > 0 && !r.generating;
 
+  // A representative sample of covers for the live preview. The real cover uses
+  // a randomized all-time set rendered server-side; this just conveys the look.
+  const previewArts = useMemo(() => {
+    const arts = r.candidates
+      .map((c) => resolveArt(r.apiBase, c.album_art_url))
+      .filter(Boolean);
+    for (let i = arts.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arts[i], arts[j]] = [arts[j], arts[i]];
+    }
+    return arts.slice(0, 28);
+  }, [r.candidates, r.apiBase]);
+
   return (
     <div className="flex flex-col gap-6 pt-2">
       <h2 className="font-display text-2xl font-bold text-white">Create recap</h2>
 
-      {/* Hero: a live preview of the cover slide as the user tunes it. */}
+      {/* Hero: a live preview of the collage cover as the user tunes it. */}
       {r.includeCover && (
-        <div className="flex justify-center">
-          <div
-            className={`flex aspect-[9/16] w-44 flex-col items-center justify-center gap-2 rounded-2xl bg-gradient-to-br p-4 text-center shadow-xl ${theme.swatch}`}
-          >
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">
-              {r.coverSubtitle || "Last 7 Days"}
-            </span>
-            <span className="font-display text-xl font-bold leading-tight text-white drop-shadow">
-              {r.coverTitle || "WEEKLY ROTATION"}
-            </span>
+        <div className="flex flex-col items-center gap-2">
+          <div className="relative aspect-[9/16] w-44 overflow-hidden rounded-2xl shadow-xl">
+            <div className="absolute inset-0 grid grid-cols-4">
+              {previewArts.map((src, i) => (
+                <div key={i} className="aspect-square bg-zinc-800">
+                  <img src={src} alt="" className="h-full w-full object-cover" />
+                </div>
+              ))}
+            </div>
+            <div className={`absolute inset-0 bg-gradient-to-br ${theme.swatch} opacity-55`} />
+            <div className="absolute inset-0 bg-black/30" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center">
+              <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-white/75">
+                {r.coverSubtitle || "Last 7 Days"}
+              </span>
+              <span className="font-display text-base font-bold leading-tight text-white drop-shadow">
+                {r.coverTitle || "WEEKLY ROTATION"}
+              </span>
+            </div>
             {r.watermark && (
-              <span className="mt-1 font-mono text-[10px] text-white/70">{r.watermark}</span>
+              <span className="absolute inset-x-0 bottom-2 text-center font-mono text-[7px] uppercase tracking-wider text-white/70">
+                {r.watermark}
+              </span>
             )}
           </div>
+          <p className="max-w-xs text-center text-[11px] text-zinc-500">
+            Cover is a randomized collage of your all-time album covers.
+          </p>
         </div>
       )}
 

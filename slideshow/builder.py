@@ -1,5 +1,6 @@
 """Orchestrate selection -> art -> render -> collage -> dated slide folder."""
 
+import random
 from datetime import date
 from pathlib import Path
 
@@ -75,6 +76,42 @@ def disperse_tracks(
     return flat
 
 
+def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60):
+    """Collect up to `cap` local album-art paths from all-time history, shuffled.
+
+    Used to build the cover collage. Relies on stored album-art URLs (already
+    correct and fast — no per-track iTunes lookup) plus any manual overrides.
+    Placeholder and broken images are dropped by load_art / find_override_art,
+    so every returned path points at a real, openable cover.
+    """
+    candidates = db.window_track_candidates(conn, 0)  # 0 -> all-time
+
+    # Dedupe by album-art URL so the collage shows distinct covers.
+    seen: set[str] = set()
+    pool = []
+    for c in candidates:
+        url = (c.get("album_art_url") or "").strip()
+        if url and url in seen:
+            continue
+        if url:
+            seen.add(url)
+        pool.append(c)
+    random.shuffle(pool)
+
+    paths = []
+    for c in pool:
+        if len(paths) >= cap:
+            break
+        override = find_override_art(c.get("artist", ""), c.get("title", ""), overrides_dir)
+        if override:
+            paths.append(override)
+            continue
+        local = load_art(c.get("album_art_url"), cache_dir)
+        if local:
+            paths.append(local)
+    return paths
+
+
 def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                      overrides_dir=None, cover_title=None, cover_subtitle=None,
                      cover_theme=None, watermark=None):
@@ -100,10 +137,16 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
     out_dir.mkdir(parents=True, exist_ok=True)
     slide_count = 0
 
-    # Draw and save cover slide first if requested
-    if cover_title:
-        from render.cover import render_cover_slide
-        cover = render_cover_slide(cover_title, cover_subtitle or "", theme=cover_theme, footer_text=watermark)
+    # Draw and save the cover slide first if requested. A cover is rendered
+    # whenever cover_title is not None (an empty string still produces a
+    # text-free collage cover); None means "no cover slide".
+    if cover_title is not None:
+        from render.cover import render_cover_collage
+        art_paths = _collage_art_paths(conn, cache_dir, overrides_dir)
+        cover = render_cover_collage(
+            art_paths, cover_title, cover_subtitle or "",
+            theme=cover_theme, footer_text=watermark,
+        )
         slide_count += 1
         cover.save(out_dir / f"slide_{slide_count}.png")
 

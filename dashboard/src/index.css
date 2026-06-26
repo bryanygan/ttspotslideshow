@@ -1,15 +1,38 @@
 @import "tailwindcss";
 
-/* Custom premium aesthetic additions */
+/* ------------------------------------------------------------------ *
+ * Design tokens                                                       *
+ * Two identities share one app, so fonts are exposed as utilities     *
+ * (font-display / font-sans / font-mono) and each option opts in.     *
+ * ------------------------------------------------------------------ */
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+}
+
 @layer base {
   body {
-    background-color: #0f1115;
-    color: #f3f4f6;
-    font-family: 'Inter', system-ui, sans-serif;
+    background-color: #0b0b12;
+    color: #f4f4f5;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Honor reduced-motion across both options. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
-/* Hide scrollbars utility */
+/* Hide scrollbars (used by horizontal chip rows + trays). */
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -18,22 +41,13 @@
   display: none;
 }
 
-/* Thin custom scrollbar */
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: #272a34 transparent;
+/* Respect the iPhone home-indicator / notch for fixed bars. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
 }
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #272a34;
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #3f4453;
+.h-safe-bottom {
+  height: env(safe-area-inset-bottom, 0px);
 }
