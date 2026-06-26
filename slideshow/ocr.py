@@ -32,9 +32,26 @@ def run_windows_ocr(image_path: Path) -> list[str]:
     # Escape single quotes for PowerShell
     escaped_path = str(image_path.resolve()).replace("'", "''")
     script = f"""
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
     [Windows.Media.Ocr.OcrEngine, Windows.Media.Ocr, ContentType=WindowsRuntime] | Out-Null
     [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType=WindowsRuntime] | Out-Null
     [Windows.Storage.StorageFile, Windows.Storage, ContentType=WindowsRuntime] | Out-Null
+    [Windows.Storage.Streams.IRandomAccessStream, Windows.Storage, ContentType=WindowsRuntime] | Out-Null
+    [Windows.Graphics.Imaging.SoftwareBitmap, Windows.Graphics.Imaging, ContentType=WindowsRuntime] | Out-Null
+
+    $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {{ 
+        $_.Name -eq 'AsTask' -and 
+        $_.GetParameters().Count -eq 1 -and 
+        $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' 
+    }})[0]
+
+    function Get-WinRTResult {{
+        param($AsyncOp, $ResultType)
+        $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+        $netTask = $asTask.Invoke($null, @($AsyncOp))
+        $netTask.Wait(-1) | Out-Null
+        return $netTask.Result
+    }}
 
     $path = '{escaped_path}'
     if (-not (Test-Path $path)) {{
@@ -42,17 +59,17 @@ def run_windows_ocr(image_path: Path) -> list[str]:
         exit 1
     }}
     
-    $file = [Windows.Storage.StorageFile]::GetFileFromPathAsync($path).GetAwaiter().GetResult()
-    $stream = $file.OpenAsync([Windows.Storage.FileAccessMode]::Read).GetAwaiter().GetResult()
-    $decoder = [Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream).GetAwaiter().GetResult()
-    $bitmap = $decoder.GetSoftwareBitmapAsync().GetAwaiter().GetResult()
+    $file = Get-WinRTResult -AsyncOp ([Windows.Storage.StorageFile]::GetFileFromPathAsync($path)) -ResultType ([Windows.Storage.StorageFile])
+    $stream = Get-WinRTResult -AsyncOp ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) -ResultType ([Windows.Storage.Streams.IRandomAccessStream])
+    $decoder = Get-WinRTResult -AsyncOp ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) -ResultType ([Windows.Graphics.Imaging.BitmapDecoder])
+    $bitmap = Get-WinRTResult -AsyncOp ($decoder.GetSoftwareBitmapAsync()) -ResultType ([Windows.Graphics.Imaging.SoftwareBitmap])
 
     $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
     if ($null -eq $engine) {{
         Write-Error "Failed to initialize OCR Engine."
         exit 1
     }}
-    $result = $engine.RecognizeAsync($bitmap).GetAwaiter().GetResult()
+    $result = Get-WinRTResult -AsyncOp ($engine.RecognizeAsync($bitmap)) -ResultType ([Windows.Media.Ocr.OcrResult])
     $result.Lines | ForEach-Object {{ $_.Text }}
     """
 
@@ -102,12 +119,46 @@ def is_valid_match(line1: str, line2: str, result: dict) -> bool:
     return False
 
 
+def clean_ocr_line(line: str) -> str:
+    """Clean common OCR noise, badges, and formatting artifacts from a line."""
+    # 1. Remove leading explicit/playing badges: "a ", "_f ", ". ", "a  "
+    line = re.sub(r"^(?:[a_.\-\d\s]|_f)\s+\b", "", line, flags=re.IGNORECASE)
+    # 2. Remove standalone badges like "Video", "Lyrics", "Explicit", "Audio", "Official"
+    line = re.sub(r"\b(Video|Lyrics|Audio|Explicit|Official)\b\s*", "", line, flags=re.IGNORECASE)
+    # 3. Clean up leading/trailing punctuation and multiple spaces
+    line = re.sub(r"^[^a-zA-Z0-9\"'\(]+|[^a-zA-Z0-9\"'\)]+$", "", line)
+    return line.strip()
+
+
+def search_spotify(query: str) -> Optional[dict]:
+    """Query Spotify Web API for a track query. Returns track dict in similar shape to iTunes."""
+    try:
+        from spotify_client import get_client
+        sp = get_client()
+        results = sp.search(q=query, type="track", limit=1)
+        items = results.get("tracks", {}).get("items", [])
+        if items:
+            track = items[0]
+            album = track.get("album", {})
+            images = album.get("images", [])
+            art_url = images[0].get("url") if images else ""
+            return {
+                "trackName": track.get("name", ""),
+                "artistName": ", ".join(a.get("name", "") for a in track.get("artists", [])),
+                "artworkUrl100": art_url,
+                "trackId": track.get("id", ""),
+            }
+    except Exception:
+        pass
+    return None
+
+
 def parse_tracks_from_lines(
     lines: list[str],
     conn=None,
     fetch: Optional[Callable[[str], str]] = None,
 ) -> list[dict]:
-    """Pair consecutive lines and resolve them into track metadata via iTunes search."""
+    """Pair consecutive lines and resolve them into track metadata via iTunes/Spotify search."""
     tracks = []
     seen_keys = set()
 
@@ -127,9 +178,21 @@ def parse_tracks_from_lines(
             i += 1
             continue
 
-        query = f"{line1} {line2}"
+        c_line1 = clean_ocr_line(line1)
+        c_line2 = clean_ocr_line(line2)
+
+        if len(c_line1) < 2 or len(c_line2) < 2:
+            i += 1
+            continue
+
+        query = f"{c_line1} {c_line2}"
+        # 1. Search iTunes
         result = search_itunes(query, fetch=fetch)
-        if result and is_valid_match(line1, line2, result):
+        # 2. Fallback to Spotify Search if iTunes failed or returned mismatch
+        if not result or not is_valid_match(c_line1, c_line2, result):
+            result = search_spotify(query)
+
+        if result and is_valid_match(c_line1, c_line2, result):
             title = result.get("trackName", "")
             artist = result.get("artistName", "")
             art_url = result.get("artworkUrl100", "").replace(
@@ -163,7 +226,7 @@ def parse_tracks_from_lines(
                     }
                 )
                 print(
-                    f"  ✓ Identified: \"{title}\" by {artist} (Bucket: {bucket})"
+                    f"  [OK] Identified: \"{title}\" by {artist} (Bucket: {bucket})"
                 )
 
             # Successfully paired L1 and L2, skip next index

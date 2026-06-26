@@ -39,13 +39,12 @@ export function OcrScanner({ r }: { r: RecapState }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
 
-  const handleFile = useCallback(
-    (file: File) => {
-      if (!file.type.startsWith("image/")) return;
-      setPreviewUrl(URL.createObjectURL(file));
-      setCheckedKeys(new Set());
-      r.clearOcrTracks();
-      r.runOcr(file);
+  const handleFiles = useCallback(
+    (files: File[]) => {
+      const validFiles = files.filter((file) => file.type.startsWith("image/"));
+      if (validFiles.length === 0) return;
+      setPreviewUrl(URL.createObjectURL(validFiles[0]));
+      r.runOcr(validFiles);
     },
     [r],
   );
@@ -54,10 +53,10 @@ export function OcrScanner({ r }: { r: RecapState }) {
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragging(false);
-      const file = e.dataTransfer.files?.[0];
-      if (file) handleFile(file);
+      const files = Array.from(e.dataTransfer.files || []);
+      if (files.length > 0) handleFiles(files);
     },
-    [handleFile],
+    [handleFiles],
   );
 
   // Pre-check all results when they arrive
@@ -79,17 +78,12 @@ export function OcrScanner({ r }: { r: RecapState }) {
   };
 
   const handleAddToSelection = () => {
-    // Filter ocrTracks to only checked ones before adding
-    const filtered = r.ocrTracks.filter((t) => checkedKeys.has(t.track_key));
-    // Temporarily override ocrTracks via the hook's internal mechanism
-    // by calling addOcrTracksToSelection after narrowing the list —
-    // since the hook operates on its internal ocrTracks state we
-    // call addOcrTracksToSelection which reads from state directly.
-    // So: manipulate candidates + selectedOrder ourselves for checked tracks.
     r.addOcrTracksToSelection();
-    // Clear the ones that aren't checked from the selection added
-    // (addOcrTracksToSelection adds ALL ocrTracks, then we remove unchecked)
-    filtered; // used to determine UI state
+    r.clearOcrTracks();
+    setPreviewUrl(null);
+  };
+
+  const handleClear = () => {
     r.clearOcrTracks();
     setPreviewUrl(null);
   };
@@ -102,7 +96,7 @@ export function OcrScanner({ r }: { r: RecapState }) {
       <div>
         <h2 className="font-display text-2xl font-bold text-white">Screenshot Scanner</h2>
         <p className="mt-1 text-sm text-zinc-400">
-          Upload a screenshot of your Spotify queue or playlist — Windows OCR will extract the tracks automatically.
+          Upload screenshots of your Spotify queue or playlist — Windows OCR will extract the tracks automatically.
         </p>
       </div>
 
@@ -122,10 +116,11 @@ export function OcrScanner({ r }: { r: RecapState }) {
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
+            const files = Array.from(e.target.files || []);
+            if (files.length > 0) handleFiles(files);
             e.target.value = "";
           }}
         />
@@ -144,10 +139,10 @@ export function OcrScanner({ r }: { r: RecapState }) {
 
         <div className="text-center">
           <p className="text-sm font-semibold text-white">
-            {previewUrl ? "Upload a different screenshot" : "Drop screenshot here"}
+            {previewUrl ? "Add another screenshot / drag to upload" : "Drop screenshots here"}
           </p>
           <p className="mt-1 text-xs text-zinc-500">
-            {previewUrl ? "or click to replace" : "or click to browse · PNG, JPG, WebP"}
+            {previewUrl ? "or click to add more" : "or click to browse · PNG, JPG, WebP"}
           </p>
         </div>
       </div>
@@ -186,7 +181,7 @@ export function OcrScanner({ r }: { r: RecapState }) {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={r.clearOcrTracks}
+                onClick={handleClear}
                 className="flex items-center gap-1 rounded-lg bg-zinc-800 px-2.5 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 transition-colors"
               >
                 <TrashIcon className="h-3.5 w-3.5" /> Clear

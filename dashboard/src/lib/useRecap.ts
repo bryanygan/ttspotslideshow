@@ -87,7 +87,7 @@ export interface RecapState {
   ocrTracks: Candidate[];
   ocrLoading: boolean;
   ocrError: string | null;
-  runOcr: (file: File) => Promise<void>;
+  runOcr: (files: File[]) => Promise<void>;
   addOcrTracksToSelection: () => void;
   clearOcrTracks: () => void;
 
@@ -406,13 +406,19 @@ export function useRecap(): RecapState {
   );
 
   const runOcr = useCallback(
-    async (file: File) => {
+    async (files: File[]) => {
       setOcrLoading(true);
       setOcrError(null);
-      setOcrTracks([]);
       try {
-        const tracks = await uploadOcrScreenshot(apiBase, file);
-        setOcrTracks(tracks);
+        const promises = files.map((file) => uploadOcrScreenshot(apiBase, file));
+        const results = await Promise.all(promises);
+        const allNewTracks = results.flat();
+
+        setOcrTracks((prev) => {
+          const existingKeys = new Set(prev.map((t) => t.track_key));
+          const uniqueNew = allNewTracks.filter((t) => !existingKeys.has(t.track_key));
+          return [...prev, ...uniqueNew];
+        });
       } catch (err) {
         setOcrError(err instanceof Error ? err.message : "OCR failed.");
       } finally {

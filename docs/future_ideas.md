@@ -55,6 +55,7 @@ Items are ranked by **Impact × Effort** (High/Medium/Low) and include completio
 | 8 | Replace deprecated popularity field | Medium | Medium | 1–2 hrs |
 | 9 | Caption preview in dashboard Create tab | Low | Low | 20 min |
 | 10 | Rate limiting on dashboard API | Medium | Low | 30 min |
+| 11 | Playlist parsing and generation | High | Medium | 2–3 hrs |
 
 ### 1. Audio Snippet Sync for MP4 Videos
 * Extend `video_export.py` to download Spotify `preview_url` clips (30s each), trim to fit slide duration, and overlay audio onto each slide segment using `moviepy` or `ffmpeg`.
@@ -105,3 +106,8 @@ Items are ranked by **Impact × Effort** (High/Medium/Low) and include completio
 ### 10. Rate Limiting on Dashboard API
 * The server accepts any request with CORS `*`. If exposed publicly via Cloudflare Tunnel without Cloudflare Access, it's open to abuse.
 * Add a simple per-IP rate limiter (e.g., `slowapi` or manual token bucket).
+
+### 11. Playlist Parsing and Generation
+* Support parsing Spotify and Last.fm playlists directly (via a playlist link/ID input field in the dashboard).
+* Automatically fetch tracks from these playlists and resolve their metadata to easily seed candidates for slideshow generation.
+* Support saving generated lists directly back to new or existing Spotify playlists, establishing an archive or rotation sync.
