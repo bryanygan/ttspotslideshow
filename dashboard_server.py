@@ -32,6 +32,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_get_slide(parsed)
         elif parsed.path.startswith("/api/overrides/"):
             self.handle_get_override(parsed)
+        elif parsed.path == "/api/art-test/tracks":
+            self.handle_get_art_test_tracks()
+        elif parsed.path == "/api/art-test/resolve":
+            self.handle_get_art_test_resolve(parsed)
         else:
             self.handle_static_files(parsed)
 
@@ -41,6 +45,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_post_generate()
         elif parsed.path == "/api/overrides/upload":
             self.handle_post_override_upload()
+        elif parsed.path == "/api/art-test/save":
+            self.handle_post_art_test_save()
         else:
             self.send_error(404, "Not Found")
 
@@ -401,6 +407,98 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html")
         self.end_headers()
         self.wfile.write(html.encode("utf-8"))
+
+    def handle_get_art_test_tracks(self):
+        try:
+            with db.connect() as conn:
+                tracks = db.random_unique_tracks(conn, 100)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"tracks": tracks}).encode("utf-8"))
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+
+    def handle_get_art_test_resolve(self, parsed):
+        query = parse_qs(parsed.query)
+        artist = query.get("artist", [""])[0]
+        title = query.get("title", [""])[0]
+
+        if not artist or not title:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Missing artist or title"}).encode("utf-8"))
+            return
+
+        spotify_url = None
+        itunes_url = None
+
+        # 1. Fetch from Spotify
+        try:
+            from slideshow.art_resolve import search_spotify_art
+            spotify_url = search_spotify_art(artist, title)
+        except Exception:
+            pass
+
+        # 2. Fetch from iTunes
+        try:
+            from webutil import itunes_search
+            results = itunes_search(f"{artist} {title}")
+            if results:
+                artwork = results[0].get("artworkUrl100", "")
+                if artwork:
+                    itunes_url = artwork.replace("100x100", "1000x1000")
+        except Exception:
+            pass
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(
+            json.dumps({
+                "spotify_url": spotify_url,
+                "itunes_url": itunes_url
+            }).encode("utf-8")
+        )
+
+    def handle_post_art_test_save(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8")
+        try:
+            payload = json.loads(body)
+            artist = payload.get("artist")
+            title = payload.get("title")
+            album_art_url = payload.get("album_art_url")
+        except Exception as e:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": f"Invalid JSON payload: {e}"}).encode("utf-8"))
+            return
+
+        if not artist or not title:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Missing artist or title"}).encode("utf-8"))
+            return
+
+        try:
+            with db.connect() as conn:
+                db.update_track_art(conn, artist, title, album_art_url or "")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "success"}).encode("utf-8"))
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
 
 
 def main():

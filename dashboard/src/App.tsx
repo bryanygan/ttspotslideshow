@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRecap } from "./lib/useRecap";
 import { PocketDJ } from "./options/pocket/PocketDJ";
+import { ArtSandbox } from "./options/pocket/ArtSandbox";
 import { Sheet } from "./ui/Sheet";
 import { GearIcon, MusicIcon } from "./ui/icons";
 
@@ -9,6 +10,7 @@ function App() {
   const r = useRecap();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tempApiBase, setTempApiBase] = useState(r.apiBase);
+  const [viewMode, setViewMode] = useState<"picker" | "art-test">("picker");
 
   // Sync tempApiBase when the settings sheet is opened
   useEffect(() => {
@@ -27,6 +29,31 @@ function App() {
             </span>
             Weekly Recap
           </span>
+
+          {/* View switcher tabs */}
+          <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 text-xs font-semibold">
+            <button
+              onClick={() => setViewMode("picker")}
+              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                viewMode === "picker"
+                  ? "bg-violet-600 text-white shadow"
+                  : "text-zinc-400 hover:text-zinc-100"
+              }`}
+            >
+              Recap Picker
+            </button>
+            <button
+              onClick={() => setViewMode("art-test")}
+              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                viewMode === "art-test"
+                  ? "bg-violet-600 text-white shadow"
+                  : "text-zinc-400 hover:text-zinc-100"
+              }`}
+            >
+              Art Sandbox
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
@@ -39,7 +66,7 @@ function App() {
       </header>
 
       <div className="pt-11">
-        <PocketDJ r={r} />
+        {viewMode === "picker" ? <PocketDJ r={r} /> : <ArtSandbox apiBase={r.apiBase} />}
       </div>
 
       <Sheet

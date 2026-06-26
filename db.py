@@ -428,3 +428,26 @@ def window_track_candidates(conn: sqlite3.Connection, start_unix: int) -> list:
             g["album_art_url"] = r["album_art_url"]
             g["popularity"] = r["popularity"]
     return list(groups.values())
+
+
+def random_unique_tracks(conn: sqlite3.Connection, limit: int = 100) -> list:
+    """Return a list of limit random unique tracks from the plays table."""
+    rows = conn.execute(
+        """
+        SELECT name, artist, MAX(album_art_url) as album_art_url
+        FROM plays
+        GROUP BY artist, name
+        ORDER BY RANDOM()
+        LIMIT ?
+        """,
+        (limit,)
+    ).fetchall()
+    return [{"title": r[0], "artist": r[1], "album_art_url": r[2]} for r in rows]
+
+
+def update_track_art(conn: sqlite3.Connection, artist: str, name: str, album_art_url: str) -> None:
+    """Update the album_art_url for all occurrences of a track in the plays table."""
+    conn.execute(
+        "UPDATE plays SET album_art_url = ? WHERE artist = ? AND name = ?",
+        (album_art_url, artist, name)
+    )

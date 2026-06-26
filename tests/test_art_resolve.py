@@ -11,9 +11,9 @@ def _track(artist="2hollis", title="destroy me", art="https://lastfm/300.jpg"):
     return {"artist": artist, "title": title, "album_art_url": art}
 
 
-def test_itunes_hit_rewritten_to_600():
-    out = resolve_art_url(_track(), fetch=lambda url: ITUNES_HIT)
-    assert out == "https://is1.example/abc/600x600bb.jpg"
+def test_itunes_hit_rewritten_to_1000():
+    out = resolve_art_url(_track(art=""), fetch=lambda url: ITUNES_HIT)
+    assert out == "https://is1.example/abc/1000x1000bb.jpg"
 
 
 def test_no_results_falls_back_to_lastfm():
@@ -41,6 +41,6 @@ def test_cache_avoids_second_fetch():
         return ITUNES_HIT
 
     cache = {}
-    resolve_art_url(_track(), fetch=fetch, cache=cache)
-    resolve_art_url(_track(), fetch=fetch, cache=cache)
+    resolve_art_url(_track(art=""), fetch=fetch, cache=cache)
+    resolve_art_url(_track(art=""), fetch=fetch, cache=cache)
     assert len(calls) == 1
