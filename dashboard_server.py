@@ -65,8 +65,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
             return
 
-        # Collect track IDs that don't have cached popularity in the DB
-        uncached_candidates = [c for c in candidates if c.get("track_id") and c.get("popularity") is None]
+        # Collect track IDs that don't have cached popularity in the DB.
+        # Filter to make sure we only query Spotify for valid 22-character alphanumeric Spotify track IDs,
+        # ignoring Last.fm UUIDs (which contain hyphens and are 36 characters long).
+        uncached_candidates = [
+            c for c in candidates
+            if c.get("track_id")
+            and len(c["track_id"]) == 22
+            and c["track_id"].isalnum()
+            and c.get("popularity") is None
+        ]
         track_ids_to_fetch = [c["track_id"] for c in uncached_candidates]
 
         # Initialize popularities dict with already cached database values
@@ -126,6 +134,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             cover_subtitle = payload.get("cover_subtitle", None)
             cover_theme = payload.get("cover_theme", None)
             watermark = payload.get("watermark", None)
+            cover_pool = payload.get("cover_pool", None)
         except Exception as e:
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
@@ -154,7 +163,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 summary = build_recap_slideshow(
                     conn, out_root, tracks,
                     cover_title=cover_title, cover_subtitle=cover_subtitle,
-                    cover_theme=cover_theme, watermark=watermark
+                    cover_theme=cover_theme, watermark=watermark,
+                    cover_pool=cover_pool
                 )
         except Exception as e:
             self.send_response(500)

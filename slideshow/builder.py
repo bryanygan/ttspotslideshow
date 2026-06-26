@@ -76,14 +76,45 @@ def disperse_tracks(
     return flat
 
 
-def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60):
-    """Collect up to `cap` local album-art paths from all-time history, shuffled.
+def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=None):
+    """Collect up to `cap` local album-art paths.
 
-    Used to build the cover collage. Relies on stored album-art URLs (already
-    correct and fast — no per-track iTunes lookup) plus any manual overrides.
-    Placeholder and broken images are dropped by load_art / find_override_art,
-    so every returned path points at a real, openable cover.
+    If `cover_pool` is provided (list of image URLs), we resolve those.
+    Otherwise, we collect from all-time history, shuffled.
     """
+    if cover_pool:
+        # Dedupe by URL so the collage shows distinct covers.
+        seen: set[str] = set()
+        pool = []
+        for url in cover_pool:
+            u = (url or "").strip()
+            if u and u not in seen:
+                seen.add(u)
+                pool.append(u)
+        random.shuffle(pool)
+
+        paths = []
+        for url in pool:
+            if len(paths) >= cap:
+                break
+            
+            # Check manual overrides URL representation from frontend
+            if url.startswith("/api/overrides/"):
+                filename = url.split("/")[-1]
+                if overrides_dir:
+                    local_path = Path(overrides_dir) / filename
+                else:
+                    import config
+                    local_path = config.ART_OVERRIDES_DIR / filename
+                if local_path.exists():
+                    paths.append(local_path)
+                    continue
+
+            local = load_art(url, cache_dir)
+            if local:
+                paths.append(local)
+        return paths
+
     candidates = db.window_track_candidates(conn, 0)  # 0 -> all-time
 
     # Dedupe by album-art URL so the collage shows distinct covers.
@@ -114,7 +145,7 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60):
 
 def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                      overrides_dir=None, cover_title=None, cover_subtitle=None,
-                     cover_theme=None, watermark=None):
+                     cover_theme=None, watermark=None, cover_pool=None):
     """Resolve art, render cards, write 4-up slides, and record featured tracks.
 
     Returns (slide_count, genre_spread). Shared by build_slideshow and
@@ -142,7 +173,7 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
     # text-free collage cover); None means "no cover slide".
     if cover_title is not None:
         from render.cover import render_cover_collage
-        art_paths = _collage_art_paths(conn, cache_dir, overrides_dir)
+        art_paths = _collage_art_paths(conn, cache_dir, overrides_dir, cover_pool=cover_pool)
         cover = render_cover_collage(
             art_paths, cover_title, cover_subtitle or "",
             theme=cover_theme, footer_text=watermark,
@@ -205,7 +236,7 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
                           fetch=None, cache_dir=None, overrides_dir=None,
                           cover_title=None, cover_subtitle=None,
                           cover_theme=None, watermark=None,
-                          recap_id=None) -> dict:
+                          recap_id=None, cover_pool=None) -> dict:
     """Build slides for specific selected tracks. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -238,7 +269,7 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
     slide_count, spread = _render_and_save(
         conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
         cover_title=cover_title, cover_subtitle=cover_subtitle,
-        cover_theme=cover_theme, watermark=watermark
+        cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread

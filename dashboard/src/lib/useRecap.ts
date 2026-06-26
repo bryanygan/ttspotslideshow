@@ -235,6 +235,7 @@ export function useRecap(): RecapState {
         cover_subtitle: includeCover ? coverSubtitle : null,
         cover_theme: includeCover ? coverTheme : null,
         watermark: watermark.trim() || null,
+        cover_pool: candidates.map((c) => c.album_art_url).filter(Boolean),
       });
       setSummary(result.summary);
       setSlideUrls(result.slides);
@@ -251,6 +252,7 @@ export function useRecap(): RecapState {
     coverSubtitle,
     coverTheme,
     watermark,
+    candidates,
   ]);
 
   const uploadArtFor = useCallback(

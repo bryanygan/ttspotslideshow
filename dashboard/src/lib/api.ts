@@ -23,6 +23,7 @@ export interface GeneratePayload {
   cover_subtitle: string | null;
   cover_theme: string | null;
   watermark: string | null;
+  cover_pool?: string[];
 }
 
 export interface GenerateResult {
