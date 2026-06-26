@@ -40,6 +40,16 @@ export class MissingCoverError extends Error {
   }
 }
 
+export class UnconfirmedCoverError extends Error {
+  /** Tracks that only have an iTunes fallback cover needing user confirmation. */
+  unconfirmedCovers: Array<{ artist: string; title: string; track_key: string; itunes_url: string }>;
+  constructor(unconfirmedCovers: any[]) {
+    super(`iTunes cover confirmation required for ${unconfirmedCovers.length} track(s).`);
+    this.name = "UnconfirmedCoverError";
+    this.unconfirmedCovers = unconfirmedCovers;
+  }
+}
+
 export async function generateRecap(
   apiBase: string,
   payload: GeneratePayload,
@@ -51,6 +61,9 @@ export async function generateRecap(
   });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
+    if (err.error === "unconfirmed_covers" && Array.isArray(err.unconfirmed_covers)) {
+      throw new UnconfirmedCoverError(err.unconfirmed_covers);
+    }
     if (err.error === "Missing album cover art" && Array.isArray(err.missing_covers)) {
       throw new MissingCoverError(err.error, err.missing_covers);
     }
@@ -79,6 +92,23 @@ export async function uploadArt(
   if (!resp.ok) throw new Error(`Upload failed (${resp.statusText}).`);
   const data = await resp.json();
   return { url: data.url };
+}
+
+/**
+ * Save a confirmed iTunes URL to the art-test DB so future generate calls
+ * use it as a stored URL (skipping the iTunes-confirmation step).
+ */
+export async function saveItunesUrl(
+  apiBase: string,
+  track: { artist: string; title: string },
+  itunesUrl: string,
+): Promise<void> {
+  const resp = await fetch(`${apiBase}/api/art-test/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ artist: track.artist, title: track.title, album_art_url: itunesUrl }),
+  });
+  if (!resp.ok) throw new Error(`Failed to save artwork URL (${resp.statusText}).`);
 }
 
 export async function uploadOcrScreenshot(

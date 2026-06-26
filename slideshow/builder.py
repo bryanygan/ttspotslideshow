@@ -15,10 +15,18 @@ from render.collage import collage
 
 
 class MissingCoverError(Exception):
-    """Raised when one or more tracks are missing album cover art."""
+    """Raised when one or more tracks are missing album cover art entirely."""
     def __init__(self, missing_tracks):
         self.missing_tracks = missing_tracks
         super().__init__(f"Missing album cover art for {len(missing_tracks)} tracks.")
+
+
+class UnconfirmedCoverError(Exception):
+    """Raised when one or more tracks only have an iTunes fallback cover that needs
+    user confirmation before it can be used."""
+    def __init__(self, unconfirmed_tracks):
+        self.unconfirmed_tracks = unconfirmed_tracks
+        super().__init__(f"iTunes cover confirmation required for {len(unconfirmed_tracks)} tracks.")
 
 
 def disperse_tracks(
@@ -264,15 +272,28 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                 for idx in to_download[url]:
                     art_paths[idx] = local_path
 
-    # Check for missing covers
+    # Check for iTunes covers (need user confirmation) and fully missing covers
+    from slideshow.art_resolve import _is_itunes_url
+    unconfirmed_tracks = []
     missing_tracks = []
     for idx, path in enumerate(art_paths):
+        url = resolved_urls[idx]
         if not path:
             missing_tracks.append({
                 "artist": rendered[idx].get("artist", "Unknown"),
                 "title": rendered[idx].get("title", "Unknown"),
                 "track_key": rendered[idx].get("track_key", "")
             })
+        elif url and _is_itunes_url(url):
+            unconfirmed_tracks.append({
+                "artist": rendered[idx].get("artist", "Unknown"),
+                "title": rendered[idx].get("title", "Unknown"),
+                "track_key": rendered[idx].get("track_key", ""),
+                "itunes_url": url,
+            })
+
+    if unconfirmed_tracks:
+        raise UnconfirmedCoverError(unconfirmed_tracks)
 
     if missing_tracks:
         raise MissingCoverError(missing_tracks)

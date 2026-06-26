@@ -4,6 +4,7 @@ import { underratedScore } from "./types";
 import {
   fetchCandidates,
   generateRecap,
+  saveItunesUrl,
   uploadArt,
   uploadOcrScreenshot,
 } from "./api";
@@ -69,6 +70,10 @@ export interface RecapState {
   setMissingCovers: (v: Array<{ artist: string; title: string; track_key: string }>) => void;
   saveArtLinkFor: (track: { artist: string; title: string; track_key: string }, url: string) => Promise<void>;
 
+  // iTunes confirmation flow
+  unconfirmedCovers: Array<{ artist: string; title: string; track_key: string; itunes_url: string }>;
+  confirmItunesCover: (track: { artist: string; title: string; track_key: string; itunes_url: string }, accept: boolean) => Promise<void>;
+
   // OCR
   ocrTracks: Candidate[];
   ocrLoading: boolean;
@@ -103,6 +108,7 @@ export function useRecap(): RecapState {
   const [summary, setSummary] = useState<GenerateSummary | null>(null);
   const [slideUrls, setSlideUrls] = useState<string[]>([]);
   const [missingCovers, setMissingCovers] = useState<Array<{ artist: string; title: string; track_key: string }>>([]);
+  const [unconfirmedCovers, setUnconfirmedCovers] = useState<Array<{ artist: string; title: string; track_key: string; itunes_url: string }>>([]);
 
   const [ocrTracks, setOcrTracks] = useState<Candidate[]>([]);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -276,6 +282,7 @@ export function useRecap(): RecapState {
     setSummary(null);
     setSlideUrls([]);
     setMissingCovers([]);
+    setUnconfirmedCovers([]);
     try {
       const result = await generateRecap(apiBase, {
         tracks: selectedTracks,
@@ -288,7 +295,10 @@ export function useRecap(): RecapState {
       setSummary(result.summary);
       setSlideUrls(result.slides);
     } catch (err) {
-      if (err instanceof Error && err.name === "MissingCoverError") {
+      if (err instanceof Error && err.name === "UnconfirmedCoverError") {
+        setUnconfirmedCovers((err as any).unconfirmedCovers);
+        setError("Some tracks only have iTunes covers. Please confirm or replace them below.");
+      } else if (err instanceof Error && err.name === "MissingCoverError") {
         setMissingCovers((err as any).missingCovers);
         setError("Some tracks are missing Spotify album covers. Please upload or link them below.");
       } else {
@@ -326,6 +336,31 @@ export function useRecap(): RecapState {
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to upload artwork.");
       }
+    },
+    [apiBase],
+  );
+
+  const confirmItunesCover = useCallback(
+    async (track: { artist: string; title: string; track_key: string; itunes_url: string }, accept: boolean) => {
+      if (accept) {
+        // Save the iTunes URL so future generate calls use it as stored URL.
+        try {
+          await saveItunesUrl(apiBase, track, track.itunes_url);
+          // Optimistically update the candidate's art
+          setCandidates((prev) =>
+            prev.map((c) =>
+              c.track_key === track.track_key ? { ...c, album_art_url: track.itunes_url } : c,
+            ),
+          );
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to save cover.");
+          return;
+        }
+      } else {
+        // Move to missingCovers so the upload/link row appears
+        setMissingCovers((prev) => [...prev, { artist: track.artist, title: track.title, track_key: track.track_key }]);
+      }
+      setUnconfirmedCovers((prev) => prev.filter((t) => t.track_key !== track.track_key));
     },
     [apiBase],
   );
@@ -422,6 +457,8 @@ export function useRecap(): RecapState {
     missingCovers,
     setMissingCovers,
     saveArtLinkFor,
+    unconfirmedCovers,
+    confirmItunesCover,
     ocrTracks,
     ocrLoading,
     ocrError,

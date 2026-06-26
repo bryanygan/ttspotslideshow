@@ -327,6 +327,31 @@ function CreateTab({ r }: { r: RecapState }) {
 
       <Summary r={r} />
 
+      {/* iTunes Confirmation Panel — shown before missingCovers */}
+      {r.unconfirmedCovers.length > 0 && (
+        <section className="rounded-2xl border border-amber-500/20 bg-amber-950/10 p-4 flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="font-display text-sm font-semibold text-amber-300 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+              iTunes Cover Confirmation ({r.unconfirmedCovers.length})
+            </h3>
+            <p className="text-xs text-zinc-400">
+              These tracks don't have a Spotify cover — we found the following on iTunes. Are they correct?
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {r.unconfirmedCovers.map((track) => (
+              <ItunesConfirmRow
+                key={track.track_key}
+                track={track}
+                onConfirm={(accept) => r.confirmItunesCover(track, accept)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {r.missingCovers.length > 0 && (
         <section className="rounded-2xl border border-rose-500/20 bg-rose-950/10 p-4 flex flex-col gap-4">
           <div className="flex flex-col gap-1">
@@ -501,5 +526,76 @@ function TabBar({
         })}
       </div>
     </nav>
+  );
+}
+
+function ItunesConfirmRow({
+  track,
+  onConfirm,
+}: {
+  track: { artist: string; title: string; track_key: string; itunes_url: string };
+  onConfirm: (accept: boolean) => void;
+}) {
+  const [denied, setDenied] = useState(false);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+      <div className="flex items-center gap-3">
+        {/* iTunes cover preview */}
+        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-800 shadow">
+          <img
+            src={track.itunes_url}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+          />
+        </div>
+
+        {/* Track info */}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-white">{track.title}</div>
+          <div className="truncate text-xs text-zinc-400">{track.artist}</div>
+          <div className="mt-0.5 text-[10px] text-amber-400/80">iTunes fallback</div>
+        </div>
+
+        {/* Confirm / Deny — only shown while not yet denied */}
+        {!denied && (
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => onConfirm(true)}
+              className="flex items-center gap-1 rounded-lg bg-emerald-600/20 border border-emerald-500/30 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-600/30 transition-colors"
+            >
+              ✓ Looks right
+            </button>
+            <button
+              type="button"
+              onClick={() => setDenied(true)}
+              className="flex items-center gap-1 rounded-lg bg-rose-600/20 border border-rose-500/30 px-2.5 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-600/30 transition-colors"
+            >
+              ✕ Wrong
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Manual replacement — shown after denying */}
+      {denied && (
+        <div className="flex flex-col gap-2 pt-1 border-t border-white/5">
+          <p className="text-xs text-zinc-400">
+            Upload or paste a direct image link below, then hit Save — the track will appear in the Upload section:
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onConfirm(false)}
+              className="rounded-lg bg-zinc-800 border border-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 transition-colors whitespace-nowrap"
+            >
+              Move to upload section ↓
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -175,7 +175,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     cover_pool=cover_pool
                 )
         except Exception as e:
-            from slideshow.builder import MissingCoverError
+            from slideshow.builder import MissingCoverError, UnconfirmedCoverError
+            if isinstance(e, UnconfirmedCoverError):
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps({
+                        "error": "unconfirmed_covers",
+                        "unconfirmed_covers": e.unconfirmed_tracks
+                    }).encode("utf-8")
+                )
+                return
+
             if isinstance(e, MissingCoverError):
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")

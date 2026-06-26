@@ -1,4 +1,10 @@
-"""Resolve hi-res album art via the iTunes Search API, with Last.fm fallback."""
+"""Resolve hi-res album art via Spotify, with iTunes Search API fallback.
+
+Source hierarchy:
+  1. Stored URL (if not a Last.fm/Fastly low-res placeholder)
+  2. Spotify API search
+  3. iTunes Search API (requires confirmation in the UI before use)
+"""
 
 import re
 from typing import Callable, Optional
@@ -29,6 +35,11 @@ def clean_term(text: str) -> str:
         r"\b(Prod\.\s+by|Produced\s+by)\s+[\w\s]+", "", text, flags=re.IGNORECASE
     )
     return text.strip()
+
+
+def _is_itunes_url(url: str) -> bool:
+    """Return True if the URL originated from the iTunes/Apple CDN."""
+    return bool(url) and "mzstatic.com" in url
 
 
 def search_spotify_art(artist: str, title: str) -> Optional[str]:
@@ -75,7 +86,14 @@ def search_spotify_art(artist: str, title: str) -> Optional[str]:
 
 def resolve_art_url(track, fetch: Optional[Callable[[str], str]] = None,
                     cache: Optional[dict] = None) -> str:
-    """Best album-art URL for a track: stored URL if present, else Spotify search."""
+    """Best album-art URL for a track.
+
+    Priority:
+      1. Stored URL (if not a Last.fm/Fastly low-res placeholder) — returned immediately.
+      2. Spotify API search — only in production (fetch is None).
+      3. iTunes Search API fallback — URL will be flagged as needing user confirmation
+         by the caller (check with _is_itunes_url()).
+    """
     key = normalize(track["artist"]) + "\t" + normalize(track["title"])
     if cache is not None and key in cache:
         return cache[key]
@@ -87,13 +105,25 @@ def resolve_art_url(track, fetch: Optional[Callable[[str], str]] = None,
             cache[key] = result
         return result
 
-    # 2. Try Spotify Search
-    spotify_art = search_spotify_art(track["artist"], track["title"])
-    if spotify_art:
-        if cache is not None:
-            cache[key] = spotify_art
-        return spotify_art
+    # 2. Try Spotify Search (only in production when fetch is None)
+    if fetch is None:
+        spotify_art = search_spotify_art(track["artist"], track["title"])
+        if spotify_art:
+            if cache is not None:
+                cache[key] = spotify_art
+            return spotify_art
+
+    # 3. Fallback to iTunes Search
+    clean_title = clean_term(track["title"])
+    clean_artist = clean_term(track["artist"])
+    result = ""  # reset: don't carry forward the disqualified stored URL
+    results = itunes_search(f"{clean_artist} {clean_title}", fetch=fetch)
+    if results:
+        artwork = results[0].get("artworkUrl100", "")
+        if artwork:
+            # Upgrade iTunes thumbnail to 1000x1000 for higher quality
+            result = artwork.replace("100x100", "1000x1000")
 
     if cache is not None:
-        cache[key] = ""
-    return ""
+        cache[key] = result
+    return result
