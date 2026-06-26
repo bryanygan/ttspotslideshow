@@ -1,6 +1,7 @@
 """Orchestrate selection -> art -> render -> collage -> dated slide folder."""
 
 import random
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
@@ -82,6 +83,10 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
     If `cover_pool` is provided (list of image URLs), we resolve those.
     Otherwise, we collect from all-time history, shuffled.
     """
+    from webutil import is_placeholder
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import hashlib
+
     if cover_pool:
         # Dedupe by URL so the collage shows distinct covers.
         seen: set[str] = set()
@@ -93,11 +98,9 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
                 pool.append(u)
         random.shuffle(pool)
 
-        paths = []
+        local_paths = []
+        uncached_urls = []
         for url in pool:
-            if len(paths) >= cap:
-                break
-            
             # Check manual overrides URL representation from frontend
             if url.startswith("/api/overrides/"):
                 filename = url.split("/")[-1]
@@ -107,13 +110,42 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
                     import config
                     local_path = config.ART_OVERRIDES_DIR / filename
                 if local_path.exists():
-                    paths.append(local_path)
+                    local_paths.append(local_path)
                     continue
 
-            local = load_art(url, cache_dir)
-            if local:
-                paths.append(local)
-        return paths
+            if not is_placeholder(url):
+                digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
+                dest = Path(cache_dir) / f"{digest}.jpg"
+                if dest.exists():
+                    local_paths.append(dest)
+                else:
+                    uncached_urls.append(url)
+
+        if len(local_paths) >= cap:
+            return local_paths[:cap]
+
+        downloaded_paths = []
+        needed = cap - len(local_paths)
+        to_download = uncached_urls[:needed + 10]
+
+        if to_download:
+            with ThreadPoolExecutor(max_workers=15) as executor:
+                future_to_url = {
+                    executor.submit(load_art, url, cache_dir): url
+                    for url in to_download
+                }
+                for future in as_completed(future_to_url):
+                    try:
+                        local = future.result()
+                        if local:
+                            downloaded_paths.append(local)
+                            if len(local_paths) + len(downloaded_paths) >= cap:
+                                for f in future_to_url:
+                                    f.cancel()
+                                break
+                    except Exception:
+                        pass
+        return (local_paths + downloaded_paths)[:cap]
 
     candidates = db.window_track_candidates(conn, 0)  # 0 -> all-time
 
@@ -129,18 +161,48 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
         pool.append(c)
     random.shuffle(pool)
 
-    paths = []
+    local_paths = []
+    uncached_urls = []
     for c in pool:
-        if len(paths) >= cap:
-            break
         override = find_override_art(c.get("artist", ""), c.get("title", ""), overrides_dir)
         if override:
-            paths.append(override)
+            local_paths.append(override)
             continue
-        local = load_art(c.get("album_art_url"), cache_dir)
-        if local:
-            paths.append(local)
-    return paths
+
+        url = c.get("album_art_url")
+        if url and not is_placeholder(url):
+            digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
+            dest = Path(cache_dir) / f"{digest}.jpg"
+            if dest.exists():
+                local_paths.append(dest)
+            else:
+                uncached_urls.append(url)
+
+    if len(local_paths) >= cap:
+        return local_paths[:cap]
+
+    downloaded_paths = []
+    needed = cap - len(local_paths)
+    to_download = uncached_urls[:needed + 10]
+
+    if to_download:
+        with ThreadPoolExecutor(max_workers=15) as executor:
+            future_to_url = {
+                executor.submit(load_art, url, cache_dir): url
+                for url in to_download
+            }
+            for future in as_completed(future_to_url):
+                try:
+                    local = future.result()
+                    if local:
+                        downloaded_paths.append(local)
+                        if len(local_paths) + len(downloaded_paths) >= cap:
+                            for f in future_to_url:
+                                f.cancel()
+                            break
+                except Exception:
+                    pass
+    return (local_paths + downloaded_paths)[:cap]
 
 
 def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
@@ -153,17 +215,51 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
     `featured_date` must be a plain ISO date (the selector parses it with
     date.fromisoformat()), even when out_dir uses a "recap-" prefix.
     """
+    from webutil import is_placeholder
+    import hashlib
+
     art_cache: dict[str, str] = {}
-    cards = []
-    for track in rendered:
-        # Check manual overrides first
+    resolved_urls = [None] * len(rendered)
+    art_paths = [None] * len(rendered)
+    to_download = {}  # type: dict[str, list[int]]
+
+    for idx, track in enumerate(rendered):
         override_path = find_override_art(track["artist"], track["title"], overrides_dir)
         if override_path:
-            art_path = override_path
+            art_paths[idx] = override_path
         else:
             url = resolve_art_url(track, fetch=fetch, cache=art_cache)
-            art_path = load_art(url, cache_dir)
-        cards.append(render_card(track, art_path=art_path))
+            resolved_urls[idx] = url
+            if url and not is_placeholder(url):
+                digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
+                dest = Path(cache_dir) / f"{digest}.jpg"
+                if dest.exists():
+                    art_paths[idx] = dest
+                else:
+                    to_download.setdefault(url, []).append(idx)
+            else:
+                art_paths[idx] = None
+
+    if to_download:
+        from concurrent.futures import ThreadPoolExecutor
+        unique_urls = list(to_download.keys())
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_url = {
+                executor.submit(load_art, url, cache_dir): url
+                for url in unique_urls
+            }
+            for future in future_to_url:
+                url = future_to_url[future]
+                try:
+                    local_path = future.result()
+                except Exception:
+                    local_path = None
+                for idx in to_download[url]:
+                    art_paths[idx] = local_path
+
+    cards = []
+    for idx, track in enumerate(rendered):
+        cards.append(render_card(track, art_path=art_paths[idx]))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     slide_count = 0
@@ -173,9 +269,9 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
     # text-free collage cover); None means "no cover slide".
     if cover_title is not None:
         from render.cover import render_cover_collage
-        art_paths = _collage_art_paths(conn, cache_dir, overrides_dir, cover_pool=cover_pool)
+        art_paths_collage = _collage_art_paths(conn, cache_dir, overrides_dir, cover_pool=cover_pool)
         cover = render_cover_collage(
-            art_paths, cover_title, cover_subtitle or "",
+            art_paths_collage, cover_title, cover_subtitle or "",
             theme=cover_theme, footer_text=watermark,
         )
         slide_count += 1
