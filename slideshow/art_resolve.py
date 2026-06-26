@@ -1,20 +1,67 @@
 """Resolve hi-res album art via the iTunes Search API, with Last.fm fallback."""
 
+import re
 from typing import Callable, Optional
 
 from text_norm import normalize
 from webutil import itunes_search
 
 
+def clean_term(text: str) -> str:
+    """Remove special characters and junk descriptors from search text."""
+    # Remove leading punctuation/hashtags
+    text = re.sub(r"^[#,\-\s+]+", "", text)
+    # Remove common video/leak descriptors
+    text = re.sub(
+        r"\((Full Leaked|Slowed|Reverb|Bass Cover|Lofi|Official|Audio|Video|Lyrics|Remix|Edit)\)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\[(Full Leaked|Slowed|Reverb|Bass Cover|Lofi|Official|Audio|Video|Lyrics|Remix|Edit)\]",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Remove producer tags
+    text = re.sub(
+        r"\b(Prod\.\s+by|Produced\s+by)\s+[\w\s]+", "", text, flags=re.IGNORECASE
+    )
+    return text.strip()
+
+
 def search_spotify_art(artist: str, title: str) -> Optional[str]:
-    """Search Spotify Web API for the track cover art."""
+    """Search Spotify Web API for the track cover art, with query cleaning and loose fallbacks."""
     try:
         from spotify_client import get_client
         sp = get_client()
-        query = f"track:{title} artist:{artist}"
-        # Execute search
+
+        # Clean inputs
+        clean_title = clean_term(title)
+        clean_artist = clean_term(artist)
+
+        # 1. Try Strict Search
+        query = f"track:{clean_title} artist:{clean_artist}"
         results = sp.search(q=query, type="track", limit=1)
         tracks = results.get("tracks", {}).get("items", [])
+
+        # 2. Try Loose Search Fallback if strict failed (strip features, try text-only search)
+        if not tracks:
+            # Strip featured artists from title (e.g. "Song (feat. Artist)" -> "Song")
+            simple_title = re.sub(
+                r"\(?feat\..*?\)?", "", clean_title, flags=re.IGNORECASE
+            ).strip()
+            # Strip secondary main artists from artist list (e.g. "Artist A & Artist B" -> "Artist A")
+            simple_artist = re.split(
+                r"[,&x\b(and)\b]", clean_artist, flags=re.IGNORECASE
+            )[0].strip()
+
+            # Simple text query: "Artist Title"
+            loose_query = f"{simple_artist} {simple_title}"
+            results = sp.search(q=loose_query, type="track", limit=1)
+            tracks = results.get("tracks", {}).get("items", [])
+
         if tracks:
             images = tracks[0].get("album", {}).get("images", [])
             if images:
@@ -33,9 +80,9 @@ def resolve_art_url(track, fetch: Optional[Callable[[str], str]] = None,
     if cache is not None and key in cache:
         return cache[key]
 
-    # 1. Use stored URL if present (Spotify or Last.fm) directly to guarantee accuracy
+    # 1. Use stored URL if present, unless it's a Last.fm low-res placeholder
     result = (track.get("album_art_url") or "").strip()
-    if result.startswith("http"):
+    if result.startswith("http") and not any(x in result for x in ["lastfm", "fastly"]):
         if cache is not None:
             cache[key] = result
         return result
@@ -49,7 +96,9 @@ def resolve_art_url(track, fetch: Optional[Callable[[str], str]] = None,
             return spotify_art
 
     # 3. Fallback to iTunes Search
-    results = itunes_search(f"{track['artist']} {track['title']}", fetch=fetch)
+    clean_title = clean_term(track["title"])
+    clean_artist = clean_term(track["artist"])
+    results = itunes_search(f"{clean_artist} {clean_title}", fetch=fetch)
     if results:
         artwork = results[0].get("artworkUrl100", "")
         if artwork:
