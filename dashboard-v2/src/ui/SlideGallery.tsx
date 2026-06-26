@@ -1,0 +1,51 @@
+import type { RecapState } from "../lib/useRecap";
+
+// Rendered slides + save-to-Photos guidance, shown after a successful generate.
+// Shared by both options.
+export function SlideGallery({ r }: { r: RecapState }) {
+  if (r.slideUrls.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-200">
+          Your slides ({r.slideUrls.length})
+        </h3>
+        <span className="rounded-lg border border-emerald-800/60 bg-emerald-950/40 px-2.5 py-1 text-xs text-emerald-300">
+          📱 Long-press a slide → Add to Photos
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {r.slideUrls.map((url, i) => (
+          <a
+            key={url}
+            href={`${r.apiBase}${url}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex flex-col gap-1.5"
+          >
+            <img
+              src={`${r.apiBase}${url}`}
+              alt={`Slide ${i + 1}`}
+              className="w-full rounded-xl border border-zinc-800 transition-colors group-hover:border-violet-500/60"
+            />
+            <span className="text-center text-[11px] font-medium text-zinc-500">
+              Slide {i + 1}
+            </span>
+          </a>
+        ))}
+      </div>
+
+      {r.summary && (
+        <div className="rounded-xl border border-emerald-800/50 bg-emerald-950/30 p-3 text-xs leading-relaxed text-emerald-200/90">
+          Rendered <strong>{r.summary.slide_count}</strong> slide(s). Also saved on
+          the host at:
+          <div className="mt-1.5 select-all overflow-x-auto rounded bg-black/40 p-1.5 font-mono text-[11px] break-all">
+            {r.summary.out_dir}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
