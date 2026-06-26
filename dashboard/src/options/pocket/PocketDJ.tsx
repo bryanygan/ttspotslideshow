@@ -59,7 +59,7 @@ export function PocketDJ({ r }: { r: RecapState }) {
         <button
           type="button"
           onClick={() => setTab("picks")}
-          className="fixed bottom-20 right-4 z-40 flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-600 px-3.5 py-2 text-xs font-bold text-white shadow-lg shadow-violet-950/50 hover:bg-violet-500 transition-all active:scale-95"
+          className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] left-4 z-50 flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-600 px-3.5 py-2 text-xs font-bold text-white shadow-lg shadow-violet-950/50 hover:bg-violet-500 transition-all active:scale-95"
         >
           <span>{r.selectedKeys.size} picked · Review</span>
           <ChevronRightIcon className="h-3.5 w-3.5" />
