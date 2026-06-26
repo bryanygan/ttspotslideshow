@@ -102,7 +102,6 @@ function App() {
             type="button"
             onClick={() => {
               r.setApiBase(tempApiBase);
-              r.refetch();
               setSettingsOpen(false);
             }}
             className="rounded-lg bg-violet-600 py-2.5 text-sm font-bold text-white transition-colors hover:bg-violet-500"

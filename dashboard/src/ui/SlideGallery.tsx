@@ -1,9 +1,22 @@
+import { useState } from "react";
 import type { RecapState } from "../lib/useRecap";
 
 // Rendered slides + save-to-Photos guidance, shown after a successful generate.
 // Shared by both options.
 export function SlideGallery({ r }: { r: RecapState }) {
+  const [copied, setCopied] = useState(false);
+
   if (r.slideUrls.length === 0) return null;
+
+  const caption = r.summary?.caption;
+
+  function handleCopy() {
+    if (!caption) return;
+    navigator.clipboard.writeText(caption).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -36,6 +49,26 @@ export function SlideGallery({ r }: { r: RecapState }) {
           </a>
         ))}
       </div>
+
+      {caption && (
+        <div className="flex flex-col gap-2 rounded-xl border border-violet-800/50 bg-violet-950/30 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-400">
+              TikTok Caption
+            </span>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="rounded-lg border border-violet-700/60 bg-violet-900/40 px-2.5 py-1 text-[11px] font-semibold text-violet-300 transition-colors hover:bg-violet-800/60"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+          <pre className="select-all whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-violet-100/90">
+            {caption}
+          </pre>
+        </div>
+      )}
 
       {r.summary && (
         <div className="rounded-xl border border-emerald-800/50 bg-emerald-950/30 p-3 text-xs leading-relaxed text-emerald-200/90">

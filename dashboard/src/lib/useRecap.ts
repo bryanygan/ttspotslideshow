@@ -9,6 +9,8 @@ import {
   uploadOcrScreenshot,
   fetchRecapHistory,
   fetchRecapSlides,
+  MissingCoverError,
+  UnconfirmedCoverError,
 } from "./api";
 import type { RecapHistoryEntry } from "./api";
 import { PRESETS } from "./presets";
@@ -280,7 +282,7 @@ export function useRecap(): RecapState {
     async (track: { artist: string; title: string; track_key: string }, url: string) => {
       setError(null);
       try {
-        await fetch(`${apiBase}/api/art-test/save`, {
+        const resp = await fetch(`${apiBase}/api/art-test/save`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -289,6 +291,10 @@ export function useRecap(): RecapState {
             album_art_url: url,
           }),
         });
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.error || `Failed to save cover art URL (${resp.status}).`);
+        }
         // Optimistically update candidates
         setCandidates((prev) =>
           prev.map((c) =>
@@ -335,11 +341,11 @@ export function useRecap(): RecapState {
       setSummary(result.summary);
       setSlideUrls(result.slides);
     } catch (err) {
-      if (err instanceof Error && err.name === "UnconfirmedCoverError") {
-        setUnconfirmedCovers((err as any).unconfirmedCovers);
+      if (err instanceof UnconfirmedCoverError) {
+        setUnconfirmedCovers(err.unconfirmedCovers);
         setError("Some tracks only have iTunes covers. Please confirm or replace them below.");
-      } else if (err instanceof Error && err.name === "MissingCoverError") {
-        setMissingCovers((err as any).missingCovers);
+      } else if (err instanceof MissingCoverError) {
+        setMissingCovers(err.missingCovers);
         setError("Some tracks are missing Spotify album covers. Please upload or link them below.");
       } else {
         setError(err instanceof Error ? err.message : "Failed to generate slideshow.");

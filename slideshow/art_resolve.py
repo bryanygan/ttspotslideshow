@@ -65,7 +65,7 @@ def search_spotify_art(artist: str, title: str) -> Optional[str]:
             ).strip()
             # Strip secondary main artists from artist list (e.g. "Artist A & Artist B" -> "Artist A")
             simple_artist = re.split(
-                r"[,&x\b(and)\b]", clean_artist, flags=re.IGNORECASE
+                r"[,&]|\band\b", clean_artist, flags=re.IGNORECASE
             )[0].strip()
 
             # Simple text query: "Artist Title"

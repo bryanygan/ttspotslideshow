@@ -326,7 +326,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         try:
             while True:
-                msg_type, msg_data = q.get(timeout=120)
+                try:
+                    msg_type, msg_data = q.get(timeout=600)
+                except queue.Empty:
+                    final = {"event": "error", "type": "error",
+                             "message": "Generation timed out after 10 minutes."}
+                    self.wfile.write(f"data: {json.dumps(final)}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                    break
                 if msg_type == "progress":
                     event_data = f"data: {json.dumps(msg_data)}\n\n"
                     self.wfile.write(event_data.encode("utf-8"))
@@ -633,9 +640,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Missing artist or title"}).encode("utf-8"))
             return
 
+        if not album_art_url:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Missing album_art_url"}).encode("utf-8"))
+            return
+
         try:
             with db.connect() as conn:
-                db.update_track_art(conn, artist, title, album_art_url or "")
+                db.update_track_art(conn, artist, title, album_art_url)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

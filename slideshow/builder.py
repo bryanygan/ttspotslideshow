@@ -294,11 +294,12 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
         unique_urls = list(to_download.keys())
         downloaded = [0]
         with ThreadPoolExecutor(max_workers=8) as executor:
+            from concurrent.futures import as_completed
             future_to_url = {
                 executor.submit(load_art, url, cache_dir): url
                 for url in unique_urls
             }
-            for future in future_to_url:
+            for future in as_completed(future_to_url):
                 url = future_to_url[future]
                 try:
                     local_path = future.result()
@@ -350,7 +351,7 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
 
     out_dir.mkdir(parents=True, exist_ok=True)
     slide_count = 0
-    num_collages = (len(cards) + 3) // 4  # cover + 4-up slides
+    num_collages = (len(cards) + 3) // 4 + (1 if cover_title is not None else 0)
     collage_done = 0
 
     # Draw and save the cover slide first if requested.
