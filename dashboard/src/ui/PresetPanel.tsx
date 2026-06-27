@@ -1,13 +1,20 @@
 import { useState } from "react";
 import type { RecapState } from "../lib/useRecap";
-import { COUNTS } from "../lib/constants";
 import { PRESETS } from "../lib/presets";
 
 // Target-size selector + the six smart-selection presets. Shared by both
 // options; applying a preset replaces the current selection.
 export function PresetPanel({ r }: { r: RecapState }) {
   const [customRaw, setCustomRaw] = useState("");
-  const isCustom = !(COUNTS as readonly number[]).includes(r.quickSelectCount);
+
+  const layoutCounts = r.layout === "3x3"
+    ? [9, 18, 27, 36]
+    : r.layout === "4x4"
+    ? [16, 32, 48, 64]
+    : [12, 16, 20, 24]; // 2x2
+
+  const step = r.layout === "3x3" ? 9 : (r.layout === "4x4" ? 16 : 4);
+  const isCustom = !layoutCounts.includes(r.quickSelectCount);
 
   function commitCustom(raw: string) {
     const n = parseInt(raw, 10);
@@ -27,7 +34,7 @@ export function PresetPanel({ r }: { r: RecapState }) {
           </span>
         </div>
         <div className="grid grid-cols-5 gap-1.5">
-          {COUNTS.map((n) => (
+          {layoutCounts.map((n) => (
             <button
               key={n}
               type="button"
@@ -43,8 +50,8 @@ export function PresetPanel({ r }: { r: RecapState }) {
           ))}
           <input
             type="number"
-            min={4}
-            step={4}
+            min={step}
+            step={step}
             value={customRaw}
             onChange={(e) => setCustomRaw(e.target.value)}
             onBlur={(e) => commitCustom(e.target.value)}

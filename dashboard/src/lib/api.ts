@@ -24,6 +24,7 @@ export interface GeneratePayload {
   cover_theme: string | null;
   watermark: string | null;
   cover_pool?: string[];
+  layout?: "2x2" | "3x3" | "4x4";
 }
 
 export interface GenerateResult {

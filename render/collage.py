@@ -1,22 +1,57 @@
-"""Composite four cards into a 1080x1700 edge-to-edge 2x2 slide."""
+"""Composite cards into a 1080x1700 edge-to-edge slide."""
 
 from PIL import Image
 
-from render.card import CARD_W, CARD_H
-
 SLIDE_W, SLIDE_H = 1080, 1700
 
+LAYOUT_CONFIGS = {
+    "2x2": {
+        "count": 4,
+        "card_size": (540, 850),
+        "positions": [
+            (0, 0), (540, 0),
+            (0, 850), (540, 850)
+        ]
+    },
+    "3x3": {
+        "count": 9,
+        "card_size": (360, 566),
+        "positions": [
+            (0, 0), (360, 0), (720, 0),
+            (0, 566), (360, 566), (720, 566),
+            (0, 1132), (360, 1132), (720, 1132)
+        ]
+    },
+    "4x4": {
+        "count": 16,
+        "card_size": (270, 425),
+        "positions": [
+            (0, 0), (270, 0), (540, 0), (810, 0),
+            (0, 425), (270, 425), (540, 425), (810, 425),
+            (0, 850), (270, 850), (540, 850), (810, 850),
+            (0, 1275), (270, 1275), (540, 1275), (810, 1275)
+        ]
+    }
+}
 
-def collage(cards: list[Image.Image], watermark: str = None) -> Image.Image:
-    """Place exactly four cards in a 2x2 grid: [0 1 / 2 3]."""
-    if len(cards) != 4:
-        raise ValueError(f"collage requires exactly 4 cards, got {len(cards)}")
+
+def collage(cards: list[Image.Image], layout: str = "2x2", watermark: str = None) -> Image.Image:
+    """Place cards in a grid layout (2x2, 3x3, or 4x4) and paste them on the canvas."""
+    if layout not in LAYOUT_CONFIGS:
+        raise ValueError(f"Unsupported layout: {layout}")
+
+    cfg = LAYOUT_CONFIGS[layout]
+    expected_count = cfg["count"]
+    if len(cards) != expected_count:
+        raise ValueError(f"collage layout {layout} requires exactly {expected_count} cards, got {len(cards)}")
 
     slide = Image.new("RGB", (SLIDE_W, SLIDE_H))
-    positions = [(0, 0), (CARD_W, 0), (0, CARD_H), (CARD_W, CARD_H)]
+    card_w, card_h = cfg["card_size"]
+    positions = cfg["positions"]
+
     for card, pos in zip(cards, positions):
-        if card.size != (CARD_W, CARD_H):
-            card = card.resize((CARD_W, CARD_H), resample=Image.LANCZOS)
+        if card.size != (card_w, card_h):
+            card = card.resize((card_w, card_h), resample=Image.LANCZOS)
         slide.paste(card, pos)
 
     if watermark:

@@ -71,6 +71,8 @@ export interface RecapState {
   slideCount: number;
   leftover: number;
   generate: () => void;
+  layout: "2x2" | "3x3" | "4x4";
+  setLayout: (v: "2x2" | "3x3" | "4x4") => void;
 
   // Real-time progress (SSE)
   progress: number;
@@ -131,6 +133,18 @@ export function useRecap(): RecapState {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [selectedOrder, setSelectedOrder] = useState<string[]>([]);
   const [quickSelectCount, setQuickSelectCount] = useState(16);
+
+  const [layout, setLayoutRaw] = useState<"2x2" | "3x3" | "4x4">("2x2");
+  const setLayout = useCallback((newLayout: "2x2" | "3x3" | "4x4") => {
+    setLayoutRaw(newLayout);
+    if (newLayout === "3x3") {
+      setQuickSelectCount(18);
+    } else if (newLayout === "4x4") {
+      setQuickSelectCount(16);
+    } else {
+      setQuickSelectCount(16);
+    }
+  }, []);
 
   const [includeCover, setIncludeCover] = useState(true);
   const [coverTitle, setCoverTitle] = useState("");
@@ -301,8 +315,9 @@ export function useRecap(): RecapState {
     [candidates, selectedKeys, swapSelected],
   );
 
-  const slideCount = Math.floor(selectedKeys.size / 4);
-  const leftover = selectedKeys.size % 4;
+  const slideCapacity = layout === "3x3" ? 9 : (layout === "4x4" ? 16 : 4);
+  const slideCount = Math.floor(selectedKeys.size / slideCapacity);
+  const leftover = selectedKeys.size % slideCapacity;
 
   const saveArtLinkFor = useCallback(
     async (track: { artist: string; title: string; track_key: string }, url: string) => {
@@ -358,6 +373,7 @@ export function useRecap(): RecapState {
         cover_theme: includeCover ? coverTheme : null,
         watermark: watermark.trim() || null,
         cover_pool: candidates.map((c) => c.album_art_url).filter(Boolean),
+        layout,
       }, (evt) => {
         setProgress(evt.progress);
         setProgressStage(evt.stage);
@@ -388,6 +404,7 @@ export function useRecap(): RecapState {
     coverTheme,
     watermark,
     candidates,
+    layout,
   ]);
 
   const uploadArtFor = useCallback(
@@ -641,6 +658,8 @@ export function useRecap(): RecapState {
     slideCount,
     leftover,
     generate,
+    layout,
+    setLayout,
     progress,
     progressStage,
     progressDetail,

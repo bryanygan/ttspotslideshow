@@ -121,6 +121,26 @@ export function CoverControls({ r }: { r: RecapState }) {
           placeholder="@username"
         />
       </div>
+
+      <div className="flex flex-col gap-2">
+        <span className={labelClass}>Grid Layout</span>
+        <div className="grid grid-cols-3 gap-2">
+          {(["2x2", "3x3", "4x4"] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => r.setLayout(l)}
+              className={`rounded-lg border py-2 text-center text-sm font-semibold transition-all ${
+                r.layout === l
+                  ? "border-violet-500 bg-violet-500/15 text-violet-200"
+                  : "border-zinc-800 text-zinc-400 hover:border-zinc-600"
+              }`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

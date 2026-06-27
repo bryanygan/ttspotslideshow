@@ -34,3 +34,25 @@ def test_collage_requires_four_cards():
 def test_collage_rejects_more_than_four_cards():
     with pytest.raises(ValueError):
         collage([_solid((0, 0, 0)) for _ in range(5)])
+
+
+def test_collage_3x3_size():
+    cards = [_solid((10, 20, 30)) for _ in range(9)]
+    slide = collage(cards, layout="3x3")
+    assert slide.size == (SLIDE_W, SLIDE_H)
+    assert slide.mode == "RGB"
+    assert slide.getpixel((180, 283)) == (10, 20, 30)
+
+
+def test_collage_4x4_size():
+    cards = [_solid((40, 50, 60)) for _ in range(16)]
+    slide = collage(cards, layout="4x4")
+    assert slide.size == (SLIDE_W, SLIDE_H)
+    assert slide.mode == "RGB"
+    assert slide.getpixel((135, 212)) == (40, 50, 60)
+
+
+def test_collage_invalid_count_3x3():
+    with pytest.raises(ValueError):
+        collage([_solid((0, 0, 0)) for _ in range(8)], layout="3x3")
+
