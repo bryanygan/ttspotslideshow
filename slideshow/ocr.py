@@ -64,7 +64,13 @@ def run_windows_ocr(image_path: Path) -> list[str]:
     $decoder = Get-WinRTResult -AsyncOp ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) -ResultType ([Windows.Graphics.Imaging.BitmapDecoder])
     $bitmap = Get-WinRTResult -AsyncOp ($decoder.GetSoftwareBitmapAsync()) -ResultType ([Windows.Graphics.Imaging.SoftwareBitmap])
 
+    [Windows.Globalization.Language, Windows.Globalization, ContentType=WindowsRuntime] | Out-Null
+
     $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+    if ($null -eq $engine) {{
+        $lang = [Windows.Globalization.Language]::new('en-US')
+        $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
+    }}
     if ($null -eq $engine) {{
         Write-Error "Failed to initialize OCR Engine."
         exit 1

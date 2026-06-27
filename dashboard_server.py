@@ -697,7 +697,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps({"recap_id": recap_id, "slides": slides}).encode("utf-8"))
 
 
+def auto_git_pull():
+    try:
+        import subprocess
+        print("Checking for updates (git pull)...")
+        res = subprocess.run(
+            ["git", "pull"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if res.returncode == 0:
+            print(f"Git pull result: {res.stdout.strip()}")
+        else:
+            print(f"Git pull failed (code {res.returncode}): {res.stderr.strip()}")
+    except Exception as e:
+        print(f"Skipping auto-update: {e}")
+
+
 def main():
+    auto_git_pull()
     port = 8000
     server_address = ("", port)
     httpd = ThreadingHTTPServer(server_address, DashboardHandler)
