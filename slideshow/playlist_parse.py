@@ -91,7 +91,6 @@ def parse_spotify_playlist(playlist_id: str, conn=None) -> list[dict]:
     import urllib.request
     import re
     import json
-    import ssl
     from spotify_client import get_client
 
     candidates: list[dict] = []
@@ -107,8 +106,7 @@ def parse_spotify_playlist(playlist_id: str, conn=None) -> list[dict]:
                 "Accept-Language": "en-US,en;q=0.9",
             }
         )
-        context = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, context=context) as response:
+        with urllib.request.urlopen(req) as response:
             html = response.read().decode("utf-8")
 
         pattern = r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>'
