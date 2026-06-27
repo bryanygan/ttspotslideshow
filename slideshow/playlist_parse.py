@@ -91,7 +91,6 @@ def parse_spotify_playlist(playlist_id: str, conn=None) -> list[dict]:
     import urllib.request
     import re
     import json
-    import ssl
     from spotify_client import get_client
 
     candidates: list[dict] = []
@@ -107,8 +106,7 @@ def parse_spotify_playlist(playlist_id: str, conn=None) -> list[dict]:
                 "Accept-Language": "en-US,en;q=0.9",
             }
         )
-        context = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, context=context) as response:
+        with urllib.request.urlopen(req) as response:
             html = response.read().decode("utf-8")
 
         pattern = r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>'
@@ -190,6 +188,50 @@ def parse_spotify_playlist(playlist_id: str, conn=None) -> list[dict]:
                 offset += page_size
             else:
                 break
+
+    return _dedupe(candidates)
+
+
+def search_spotify_tracks(query: str, conn=None, limit: int = 20) -> list[dict]:
+    """Search Spotify for tracks matching `query`; return candidate dicts.
+
+    Each dict matches the playlist/OCR candidate shape plus a `popularity`
+    field (Spotify returns it inline on search, so the dashboard's underrated
+    score works without an extra /tracks call).
+    """
+    from spotify_client import get_client
+
+    q = (query or "").strip()
+    if not q:
+        raise PlaylistParseError("Empty search query.")
+
+    sp = get_client()
+    try:
+        page = sp.search(q=q, type="track", limit=limit)
+    except Exception as exc:
+        raise PlaylistParseError(f"Spotify search failed: {exc}") from exc
+
+    items = (page.get("tracks") or {}).get("items") or []
+    candidates: list[dict] = []
+    for track in items:
+        if not track or track.get("type") not in (None, "track"):
+            continue
+        name = track.get("name") or ""
+        artists = track.get("artists") or []
+        artist = ", ".join(a.get("name", "") for a in artists).strip(", ")
+        if not name or not artist:
+            continue
+        images = (track.get("album") or {}).get("images") or []
+        art_url = images[0].get("url") if images else ""
+        cand = _candidate(
+            conn,
+            track_id=track.get("id") or "",
+            title=name,
+            artist=artist,
+            album_art_url=art_url,
+        )
+        cand["popularity"] = track.get("popularity", 50)
+        candidates.append(cand)
 
     return _dedupe(candidates)
 

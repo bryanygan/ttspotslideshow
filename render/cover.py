@@ -110,6 +110,7 @@ def render_cover_collage(
     Falls back to a gradient cover when no usable art is supplied.
     """
     art_paths = [p for p in (art_paths or []) if p]
+    columns = max(2, min(10, int(columns)))
     if not art_paths:
         return render_cover_slide(title, subtitle, theme=theme, footer_text=footer_text, width=width, height=height)
 
