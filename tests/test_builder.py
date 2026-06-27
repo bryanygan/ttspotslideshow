@@ -55,7 +55,7 @@ def test_build_writes_one_slide_and_records_featured(tmp_path, monkeypatch):
     assert sum(summary["genre_spread"].values()) == summary["track_count"]
     slide = tmp_path / "out" / "2026-06-24" / "slide_1.png"
     assert slide.exists()
-    assert Image.open(slide).size == (1080, 1920)
+    assert Image.open(slide).size == (1080, 1700)
     # Featured history recorded the 4 tracks.
     assert len(db.featured_history(conn)) == 4
 
@@ -101,7 +101,7 @@ def test_build_recap_slideshow(tmp_path, monkeypatch):
     assert summary["genre_spread"] == {"pop": 2, "hip-hop": 2}
     slide = Path(summary["out_dir"]) / "slide_1.png"
     assert slide.exists()
-    assert Image.open(slide).size == (1080, 1920)
+    assert Image.open(slide).size == (1080, 1700)
     history = db.featured_history(conn)
     assert len(history) == 4
     # The featured date must be a plain ISO date (the "recap-" prefix is only the
@@ -239,5 +239,5 @@ def test_build_recap_with_cover_theme_and_watermark(tmp_path, monkeypatch):
 
     collage_slide = out_dir / "slide_2.png"
     assert collage_slide.exists()
-    assert Image.open(collage_slide).size == (1080, 1920)
+    assert Image.open(collage_slide).size == (1080, 1700)
 

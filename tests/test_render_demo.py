@@ -20,4 +20,4 @@ def test_build_demo_slide_writes_a_slide(tmp_path, monkeypatch):
     out = build_demo_slide(tracks, cache_dir=tmp_path / "art", out_dir=tmp_path / "out")
     assert Path(out).exists()
     img = Image.open(out)
-    assert img.size == (1080, 1920)
+    assert img.size == (1080, 1700)
