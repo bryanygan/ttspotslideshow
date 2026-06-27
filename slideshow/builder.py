@@ -250,7 +250,7 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
 def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                      overrides_dir=None, cover_title=None, cover_subtitle=None,
                      cover_theme=None, watermark=None, cover_pool=None,
-                     progress=None):
+                     progress=None, allow_itunes_covers=False):
     """Resolve art, render cards, write 4-up slides, and record featured tracks.
 
     Returns (slide_count, genre_spread). Shared by build_slideshow and
@@ -332,7 +332,9 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                 "itunes_url": url,
             })
 
-    if unconfirmed_tracks:
+    # Headless callers (e.g. the Discord /slides bot) can't click "confirm", so
+    # they opt into using the iTunes fallback covers as-is.
+    if unconfirmed_tracks and not allow_itunes_covers:
         raise UnconfirmedCoverError(unconfirmed_tracks)
 
     if missing_tracks:
@@ -439,7 +441,8 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
                           cover_title=None, cover_subtitle=None,
                           cover_theme=None, watermark=None,
                           recap_id=None, cover_pool=None, playlist_id=None,
-                          export_video=False, progress=None) -> dict:
+                          export_video=False, progress=None,
+                          allow_itunes_covers=False) -> dict:
     """Build slides for specific selected tracks. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -473,7 +476,7 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
         conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
         cover_title=cover_title, cover_subtitle=cover_subtitle,
         cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool,
-        progress=progress
+        progress=progress, allow_itunes_covers=allow_itunes_covers
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread

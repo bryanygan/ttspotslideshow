@@ -21,9 +21,14 @@ REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback
 # OAuth scopes we need:
 #   user-read-recently-played -> the logger (last 50 plays)
 #   user-top-read             -> top tracks/artists (used in later phases)
-#   playlist-modify-public    -> sync slideshow tracks to a public playlist
+#   playlist-modify-public    -> save generated lists back to a public playlist
 #   playlist-modify-private   -> (included for flexibility)
-SCOPES = "user-read-recently-played user-top-read"
+# NOTE: adding the playlist-modify scopes invalidates the cached token, so the
+# next get_client() call will trigger a one-time browser re-authorization.
+SCOPES = (
+    "user-read-recently-played user-top-read "
+    "playlist-modify-public playlist-modify-private"
+)
 
 # --- Last.fm credentials ---
 LASTFM_API_KEY = os.getenv("LAST_FM_API_KEY")

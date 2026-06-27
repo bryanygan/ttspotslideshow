@@ -214,6 +214,54 @@ export async function uploadOcrScreenshot(
   return data.tracks ?? [];
 }
 
+export interface PlaylistParseResult {
+  source: "spotify" | "lastfm";
+  tracks: Candidate[];
+}
+
+// Parse a Spotify/Last.fm playlist link into selectable candidate tracks.
+export async function parsePlaylist(
+  apiBase: string,
+  url: string,
+): Promise<PlaylistParseResult> {
+  const resp = await fetch(`${apiBase}/api/playlist/parse`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `Couldn't parse playlist (HTTP ${resp.status}).`);
+  }
+  const data = await resp.json();
+  return { source: data.source, tracks: data.tracks ?? [] };
+}
+
+export interface SavePlaylistResult {
+  playlist_id: string;
+  url: string;
+  added: number;
+}
+
+// Save selected tracks back to a new or existing Spotify playlist.
+export async function savePlaylist(
+  apiBase: string,
+  tracks: Candidate[],
+  name?: string,
+  playlistId?: string,
+): Promise<SavePlaylistResult> {
+  const resp = await fetch(`${apiBase}/api/playlist/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tracks, name, playlist_id: playlistId }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `Couldn't save playlist (HTTP ${resp.status}).`);
+  }
+  return resp.json();
+}
+
 export interface RecapHistoryEntry {
   recap_id: string;
   date: string;
