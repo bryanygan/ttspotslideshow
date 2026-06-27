@@ -126,22 +126,27 @@ export function CoverControls({ r }: { r: RecapState }) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className={labelClass}>Cover Grid Size (Columns)</span>
-            <div className="grid grid-cols-4 gap-2">
-              {[3, 4, 5, 6].map((cols) => (
-                <button
-                  key={cols}
-                  type="button"
-                  onClick={() => r.setCoverColumns(cols)}
-                  className={`rounded-lg border py-2 text-center text-xs font-semibold transition-all ${
-                    r.coverColumns === cols
-                      ? "border-violet-500 bg-violet-500/15 text-violet-200"
-                      : "border-zinc-800 text-zinc-400 hover:border-zinc-600"
-                  }`}
-                >
-                  {cols} Cols
-                </button>
-              ))}
+            <div className="flex items-baseline justify-between">
+              <span className={labelClass}>Cover Grid Size</span>
+              <span className="font-mono text-xs text-zinc-300">
+                {r.coverColumns} × {Math.ceil(r.coverColumns * (r.slideHeight / r.slideWidth))}
+                <span className="text-zinc-500">
+                  {" "}— {r.coverColumns * Math.ceil(r.coverColumns * (r.slideHeight / r.slideWidth))} covers
+                </span>
+              </span>
+            </div>
+            <input
+              type="range"
+              min={3}
+              max={8}
+              step={1}
+              value={r.coverColumns}
+              onChange={(e) => r.setCoverColumns(parseInt(e.target.value))}
+              className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+            />
+            <div className="flex justify-between text-[10px] text-zinc-600">
+              <span>3 (large)</span>
+              <span>8 (dense)</span>
             </div>
           </div>
         </div>
