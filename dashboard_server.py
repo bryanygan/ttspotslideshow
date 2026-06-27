@@ -209,6 +209,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             playlist_id = payload.get("playlist_id", None)
             export_video = payload.get("export_video", False)
             layout = payload.get("layout", "2x2")
+            cover_only = payload.get("cover_only", False)
+            cover_columns = int(payload.get("cover_columns", 5))
         except Exception as e:
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
@@ -220,7 +222,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if not tracks:
+        if not tracks and not cover_only:
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -240,6 +242,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     cover_theme=cover_theme, watermark=watermark,
                     cover_pool=cover_pool, playlist_id=playlist_id,
                     export_video=export_video, layout=layout,
+                    cover_only=cover_only, cover_columns=cover_columns
                 )
         except Exception as e:
             from slideshow.builder import MissingCoverError, UnconfirmedCoverError
@@ -315,7 +318,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if not tracks:
+        if not tracks and not cover_only:
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -344,6 +347,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         cover_pool=cover_pool, playlist_id=playlist_id,
                         export_video=export_video,
                         progress=emitter, layout=layout,
+                        cover_only=cover_only, cover_columns=cover_columns
                     )
                 recap_id = Path(summary["out_dir"]).name
                 slides = [

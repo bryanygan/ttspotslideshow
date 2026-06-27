@@ -31,12 +31,28 @@ export function CoverControls({ r }: { r: RecapState }) {
         <input
           type="checkbox"
           checked={r.includeCover}
+          disabled={r.coverOnly}
           onChange={(e) => r.setIncludeCover(e.target.checked)}
+          className="h-5 w-5 shrink-0 accent-violet-600 disabled:opacity-40"
+        />
+      </label>
+
+      <label className="flex cursor-pointer select-none items-center justify-between gap-3">
+        <span className="text-sm font-medium text-zinc-200">Generate only cover slide</span>
+        <input
+          type="checkbox"
+          checked={r.coverOnly}
+          onChange={(e) => {
+            r.setCoverOnly(e.target.checked);
+            if (e.target.checked) {
+              r.setIncludeCover(true);
+            }
+          }}
           className="h-5 w-5 shrink-0 accent-violet-600"
         />
       </label>
 
-      {r.includeCover && (
+      {(r.includeCover || r.coverOnly) && (
         <div className="flex flex-col gap-5 border-l-2 border-violet-500/40 pl-4">
           <div className="flex flex-col gap-2">
             <span className={labelClass}>Hook text</span>
@@ -104,6 +120,26 @@ export function CoverControls({ r }: { r: RecapState }) {
                     className={`h-6 w-6 shrink-0 rounded-md bg-gradient-to-br ${theme.swatch}`}
                   />
                   <span className="truncate">{theme.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <span className={labelClass}>Cover Grid Size (Columns)</span>
+            <div className="grid grid-cols-4 gap-2">
+              {[3, 4, 5, 6].map((cols) => (
+                <button
+                  key={cols}
+                  type="button"
+                  onClick={() => r.setCoverColumns(cols)}
+                  className={`rounded-lg border py-2 text-center text-xs font-semibold transition-all ${
+                    r.coverColumns === cols
+                      ? "border-violet-500 bg-violet-500/15 text-violet-200"
+                      : "border-zinc-800 text-zinc-400 hover:border-zinc-600"
+                  }`}
+                >
+                  {cols} Cols
                 </button>
               ))}
             </div>

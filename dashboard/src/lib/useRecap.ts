@@ -63,6 +63,10 @@ export interface RecapState {
   setCoverTheme: (v: string) => void;
   watermark: string;
   setWatermark: (v: string) => void;
+  coverOnly: boolean;
+  setCoverOnly: (v: boolean) => void;
+  coverColumns: number;
+  setCoverColumns: (v: number) => void;
 
   // Generation
   generating: boolean;
@@ -151,6 +155,8 @@ export function useRecap(): RecapState {
   const [coverSubtitle, setCoverSubtitle] = useState("");
   const [coverTheme, setCoverTheme] = useState("none");
   const [watermark, setWatermark] = useState("");
+  const [coverOnly, setCoverOnly] = useState(false);
+  const [coverColumns, setCoverColumns] = useState(5);
 
   const [generating, setGenerating] = useState(false);
   const [summary, setSummary] = useState<GenerateSummary | null>(null);
@@ -354,7 +360,7 @@ export function useRecap(): RecapState {
   );
 
   const generate = useCallback(async () => {
-    if (selectedTracks.length === 0) return;
+    if (selectedTracks.length === 0 && !coverOnly) return;
     setGenerating(true);
     setError(null);
     setSummary(null);
@@ -368,12 +374,14 @@ export function useRecap(): RecapState {
     try {
       const result = await generateRecapStream(apiBase, {
         tracks: selectedTracks,
-        cover_title: includeCover ? coverTitle : null,
-        cover_subtitle: includeCover ? coverSubtitle : null,
-        cover_theme: includeCover ? coverTheme : null,
+        cover_title: (includeCover || coverOnly) ? coverTitle : null,
+        cover_subtitle: (includeCover || coverOnly) ? coverSubtitle : null,
+        cover_theme: (includeCover || coverOnly) ? coverTheme : null,
         watermark: watermark.trim() || null,
         cover_pool: candidates.map((c) => c.album_art_url).filter(Boolean),
         layout,
+        cover_only: coverOnly,
+        cover_columns: coverColumns,
       }, (evt) => {
         setProgress(evt.progress);
         setProgressStage(evt.stage);
@@ -405,6 +413,8 @@ export function useRecap(): RecapState {
     watermark,
     candidates,
     layout,
+    coverOnly,
+    coverColumns,
   ]);
 
   const uploadArtFor = useCallback(
@@ -652,6 +662,10 @@ export function useRecap(): RecapState {
     setCoverTheme,
     watermark,
     setWatermark,
+    coverOnly,
+    setCoverOnly,
+    coverColumns,
+    setCoverColumns,
     generating,
     summary,
     slideUrls,

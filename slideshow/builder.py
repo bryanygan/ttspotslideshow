@@ -119,6 +119,24 @@ def disperse_tracks(
     return flat
 
 
+def _dedupe_paths_by_content(paths: list[Path]) -> list[Path]:
+    """Return a new list of Paths, deduplicated by the SHA256 hash of their contents."""
+    import hashlib
+    seen_hashes = set()
+    unique_paths = []
+    for p in paths:
+        if not p.exists():
+            continue
+        try:
+            content_hash = hashlib.sha256(p.read_bytes()).hexdigest()
+            if content_hash not in seen_hashes:
+                seen_hashes.add(content_hash)
+                unique_paths.append(p)
+        except Exception:
+            unique_paths.append(p)
+    return unique_paths
+
+
 def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=None):
     """Collect up to `cap` local album-art paths.
 
@@ -187,7 +205,9 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
                                 break
                     except Exception:
                         pass
-        return (local_paths + downloaded_paths)[:cap]
+        all_paths = local_paths + downloaded_paths
+        deduped = _dedupe_paths_by_content(all_paths)
+        return deduped[:cap]
 
     candidates = db.window_track_candidates(conn, 0)  # 0 -> all-time
 
@@ -244,13 +264,16 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
                             break
                 except Exception:
                     pass
-    return (local_paths + downloaded_paths)[:cap]
+    all_paths = local_paths + downloaded_paths
+    deduped = _dedupe_paths_by_content(all_paths)
+    return deduped[:cap]
 
 
 def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                      overrides_dir=None, cover_title=None, cover_subtitle=None,
                      cover_theme=None, watermark=None, cover_pool=None,
-                     progress=None, allow_itunes_covers=False, layout="2x2"):
+                     progress=None, allow_itunes_covers=False, layout="2x2",
+                     cover_only=False, cover_columns=5):
     """Resolve art, render cards, write 4-up slides, and record featured tracks.
 
     Returns (slide_count, genre_spread). Shared by build_slideshow and
@@ -260,6 +283,21 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
     """
     from webutil import is_placeholder
     import hashlib
+
+    if cover_only:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if progress:
+            progress.emit("collage", 0, 1, "Building cover slide (only)…")
+        from render.cover import render_cover_collage
+        art_paths_collage = _collage_art_paths(conn, cache_dir, overrides_dir, cover_pool=cover_pool)
+        cover = render_cover_collage(
+            art_paths_collage, cover_title or "", cover_subtitle or "",
+            theme=cover_theme, footer_text=watermark, columns=cover_columns
+        )
+        cover.save(out_dir / "slide_1.png")
+        if progress:
+            progress.emit("collage", 1, 1, "Cover slide done")
+        return 1, {}
 
     art_cache: dict[str, str] = {}
     resolved_urls = [None] * len(rendered)
@@ -365,7 +403,7 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
         art_paths_collage = _collage_art_paths(conn, cache_dir, overrides_dir, cover_pool=cover_pool)
         cover = render_cover_collage(
             art_paths_collage, cover_title, cover_subtitle or "",
-            theme=cover_theme, footer_text=watermark,
+            theme=cover_theme, footer_text=watermark, columns=cover_columns
         )
         slide_count += 1
         cover.save(out_dir / f"slide_{slide_count}.png")
@@ -445,7 +483,8 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
                           cover_theme=None, watermark=None,
                           recap_id=None, cover_pool=None, playlist_id=None,
                           export_video=False, progress=None,
-                          allow_itunes_covers=False, layout="2x2") -> dict:
+                          allow_itunes_covers=False, layout="2x2",
+                          cover_only=False, cover_columns=5) -> dict:
     """Build slides for specific selected tracks. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -466,12 +505,12 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
 
     summary = {
         "date": run_date,
-        "track_count": len(rendered),
+        "track_count": len(rendered) if not cover_only else 0,
         "slide_count": 0,
         "genre_spread": {},
         "out_dir": str(out_dir),
     }
-    if not rendered:
+    if not rendered and not cover_only:
         return summary
 
     # Store the plain ISO run_date (NOT the "recap-" folder name): the selector's
@@ -481,7 +520,8 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
         conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
         cover_title=cover_title, cover_subtitle=cover_subtitle,
         cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool,
-        progress=progress, allow_itunes_covers=allow_itunes_covers, layout=layout
+        progress=progress, allow_itunes_covers=allow_itunes_covers, layout=layout,
+        cover_only=cover_only, cover_columns=cover_columns
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread

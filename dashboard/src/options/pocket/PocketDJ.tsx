@@ -280,8 +280,11 @@ function CreateTab({ r }: { r: RecapState }) {
       const j = Math.floor(Math.random() * (i + 1));
       [arts[i], arts[j]] = [arts[j], arts[i]];
     }
-    return arts.slice(0, 28);
-  }, [r.candidates, r.apiBase]);
+    const cols = r.coverColumns;
+    const rows = Math.ceil(cols * (16 / 9));
+    const needed = cols * rows;
+    return arts.slice(0, needed);
+  }, [r.candidates, r.apiBase, r.coverColumns]);
 
   return (
     <div className="flex flex-col gap-6 pt-2">
@@ -291,7 +294,10 @@ function CreateTab({ r }: { r: RecapState }) {
       {r.includeCover && (
         <div className="flex flex-col items-center gap-2">
           <div className="relative aspect-[9/16] w-44 overflow-hidden rounded-2xl shadow-xl">
-            <div className="absolute inset-0 grid grid-cols-4">
+            <div
+              className="absolute inset-0 grid"
+              style={{ gridTemplateColumns: `repeat(${r.coverColumns}, minmax(0, 1fr))` }}
+            >
               {previewArts.map((src, i) => (
                 <div key={i} className="aspect-square bg-zinc-800">
                   <img src={src} alt="" className="h-full w-full object-cover" />
