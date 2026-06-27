@@ -5,6 +5,8 @@ import {
   ChevronDownIcon,
   ShuffleIcon,
   CloseIcon,
+  LockIcon,
+  UnlockIcon,
 } from "./icons";
 
 // The ordered list of picked tracks with reorder (up/down), swap, random
@@ -67,11 +69,29 @@ export function SelectedTray({ r }: { r: RecapState }) {
               </div>
             </div>
 
+            {/* Lock / Pin toggle button */}
+            <button
+              type="button"
+              onClick={() => r.togglePin(track.track_key)}
+              title={r.isPinned(track.track_key) ? "Unlock track" : "Lock track (Keep on Smart Fill)"}
+              className={`shrink-0 rounded-lg p-1.5 transition-colors cursor-pointer ${
+                r.isPinned(track.track_key)
+                  ? "text-violet-400 hover:bg-violet-500/10"
+                  : "text-zinc-600 hover:bg-white/5 hover:text-zinc-400"
+              }`}
+            >
+              {r.isPinned(track.track_key) ? (
+                <LockIcon className="h-4 w-4" />
+              ) : (
+                <UnlockIcon className="h-4 w-4" />
+              )}
+            </button>
+
             <button
               type="button"
               onClick={() => r.toggleSelect(track.track_key)}
               aria-label="Remove track"
-              className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-400"
+              className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-400 cursor-pointer"
             >
               <CloseIcon className="h-4 w-4" />
             </button>

@@ -68,10 +68,13 @@ export interface RecapState {
   isSelected: (key: string) => boolean;
   toggleSelect: (key: string) => void;
   clearSelection: () => void;
+  pinnedKeys: Set<string>;
+  togglePin: (key: string) => void;
+  isPinned: (key: string) => boolean;
 
   quickSelectCount: number;
   setQuickSelectCount: (n: number) => void;
-  applyPreset: (presetId: string, mode?: "overwrite" | "fill") => void;
+  applyPreset: (presetId: string, mode?: "overwrite" | "fill" | "keep_pinned") => void;
 
   moveSelected: (key: string, dir: -1 | 1) => void;
   swapSelected: (oldKey: string, newKey: string) => void;
@@ -181,6 +184,7 @@ export function useRecap(): RecapState {
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [selectedOrder, setSelectedOrder] = useState<string[]>([]);
+  const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(new Set());
   const [quickSelectCount, setQuickSelectCount] = useState(16);
 
   const [layout, setLayoutRaw] = useState<"2x2" | "3x3" | "4x4">("2x2");
@@ -345,6 +349,20 @@ export function useRecap(): RecapState {
     [selectedKeys],
   );
 
+  const isPinned = useCallback(
+    (key: string) => pinnedKeys.has(key),
+    [pinnedKeys],
+  );
+
+  const togglePin = useCallback((key: string) => {
+    setPinnedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   const toggleSelect = useCallback((key: string) => {
     setSelectedKeys((prev) => {
       const next = new Set(prev);
@@ -355,17 +373,26 @@ export function useRecap(): RecapState {
     setSelectedOrder((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
     );
+    setPinnedKeys((prev) => {
+      if (prev.has(key)) {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      }
+      return prev;
+    });
     setSummary(null);
   }, []);
 
   const clearSelection = useCallback(() => {
     setSelectedKeys(new Set());
     setSelectedOrder([]);
+    setPinnedKeys(new Set());
     setSummary(null);
   }, []);
 
   const applyPreset = useCallback(
-    (presetId: string, mode: "overwrite" | "fill" = "overwrite") => {
+    (presetId: string, mode: "overwrite" | "fill" | "keep_pinned" = "overwrite") => {
       const preset = PRESETS.find((p) => p.id === presetId);
       if (!preset) return;
       if (mode === "fill") {
@@ -381,14 +408,47 @@ export function useRecap(): RecapState {
         }
         setSelectedKeys(newKeys);
         setSelectedOrder(newOrder);
+      } else if (mode === "keep_pinned") {
+        const keys = preset.fn(candidates, candidates.length);
+        const newOrder = new Array(quickSelectCount).fill(null);
+        const newKeys = new Set<string>();
+
+        // Put active pinned keys in their original indices
+        selectedOrder.forEach((key, idx) => {
+          if (pinnedKeys.has(key) && idx < quickSelectCount) {
+            newOrder[idx] = key;
+            newKeys.add(key);
+          }
+        });
+
+        // Fill all null slots in newOrder
+        let presetIdx = 0;
+        for (let i = 0; i < quickSelectCount; i++) {
+          if (newOrder[i] === null) {
+            while (presetIdx < keys.length) {
+              const candidateKey = keys[presetIdx];
+              presetIdx++;
+              if (!newKeys.has(candidateKey) && !pinnedKeys.has(candidateKey)) {
+                newOrder[i] = candidateKey;
+                newKeys.add(candidateKey);
+                break;
+              }
+            }
+          }
+        }
+
+        const finalOrder = newOrder.filter(Boolean) as string[];
+        setSelectedKeys(new Set(finalOrder));
+        setSelectedOrder(finalOrder);
       } else {
         const keys = preset.fn(candidates, quickSelectCount);
         setSelectedKeys(new Set(keys));
         setSelectedOrder(keys);
+        setPinnedKeys(new Set()); // Overwriting all unpinned/pinned picks
       }
       setSummary(null);
     },
-    [candidates, quickSelectCount, selectedKeys, selectedOrder],
+    [candidates, quickSelectCount, selectedKeys, selectedOrder, pinnedKeys],
   );
 
   const moveSelected = useCallback((key: string, dir: -1 | 1) => {
@@ -411,6 +471,14 @@ export function useRecap(): RecapState {
       return next;
     });
     setSelectedOrder((prev) => prev.map((k) => (k === oldKey ? newKey : k)));
+    setPinnedKeys((prev) => {
+      if (prev.has(oldKey)) {
+        const next = new Set(prev);
+        next.delete(oldKey);
+        return next;
+      }
+      return prev;
+    });
     setSummary(null);
   }, []);
 
@@ -823,6 +891,9 @@ export function useRecap(): RecapState {
     isSelected,
     toggleSelect,
     clearSelection,
+    pinnedKeys,
+    togglePin,
+    isPinned,
     quickSelectCount,
     setQuickSelectCount,
     applyPreset,

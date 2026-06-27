@@ -131,3 +131,17 @@ export const HistoryIcon = (p: IconProps) => (
     <path d="M12 7v5l3 3" />
   </svg>
 );
+
+export const LockIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+);
+
+export const UnlockIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+  </svg>
+);

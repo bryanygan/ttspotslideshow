@@ -95,6 +95,18 @@ export function PocketDJ({ r }: { r: RecapState }) {
               >
                 Keep existing picks & fill to {r.quickSelectCount}
               </button>
+              {r.pinnedKeys.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    r.applyPreset(pendingPresetId, "keep_pinned");
+                    setPendingPresetId(null);
+                  }}
+                  className="w-full rounded-xl border border-violet-500/30 bg-violet-600/15 py-3 text-sm font-bold text-violet-200 transition-colors hover:bg-violet-600/25 hover:border-violet-500/50 cursor-pointer shadow-md shadow-violet-950/20"
+                >
+                  Keep locked picks ({r.pinnedKeys.size}) & overwrite rest
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -103,7 +115,7 @@ export function PocketDJ({ r }: { r: RecapState }) {
                 }}
                 className="w-full rounded-xl border border-zinc-800 bg-zinc-900 py-3 text-sm font-semibold text-zinc-200 transition-colors hover:bg-zinc-800 hover:border-zinc-700 cursor-pointer"
               >
-                Overwrite my existing picks
+                Overwrite all my existing picks
               </button>
               <button
                 type="button"
