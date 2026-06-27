@@ -77,6 +77,25 @@ function BrowseHeader({ r }: { r: RecapState }) {
   return (
     <div className="sticky top-11 z-30 border-b border-white/5 bg-[#0b0b12]/85 backdrop-blur">
       <div className="mx-auto flex max-w-3xl flex-col gap-2.5 px-4 py-3">
+        <div className="relative">
+          <input
+            type="text"
+            value={r.searchQuery}
+            onChange={(e) => r.setSearchQuery(e.target.value)}
+            placeholder="Search your tracks or Spotify…"
+            className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 pr-9 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+          />
+          {r.searchQuery && (
+            <button
+              type="button"
+              onClick={r.clearSearch}
+              aria-label="Clear search"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200"
+            >
+              ×
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
           {WINDOWS.map((d) => (
             <button
@@ -132,7 +151,15 @@ function BrowseGrid({ r }: { r: RecapState }) {
     );
   }
 
-  if (r.sortedCandidates.length === 0) {
+  const q = r.searchQuery.trim().toLowerCase();
+  const visible = q
+    ? r.sortedCandidates.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q),
+      )
+    : r.sortedCandidates;
+
+  if (visible.length === 0 && !q) {
     return (
       <EmptyState
         title="No tracks here yet"
@@ -142,8 +169,9 @@ function BrowseGrid({ r }: { r: RecapState }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 pt-2 sm:grid-cols-3">
-      {r.sortedCandidates.map((track) => {
+    <>
+      <div className="grid grid-cols-2 gap-3 pt-2 sm:grid-cols-3">
+      {visible.map((track) => {
         const selected = r.isSelected(track.track_key);
         return (
           <div
@@ -218,6 +246,138 @@ function BrowseGrid({ r }: { r: RecapState }) {
           </div>
         );
       })}
+      </div>
+      {q && <SpotifyResults r={r} query={r.searchQuery.trim()} localCount={visible.length} />}
+    </>
+  );
+}
+
+function SpotifyResults({
+  r,
+  query,
+  localCount,
+}: {
+  r: RecapState;
+  query: string;
+  localCount: number;
+}) {
+  return (
+    <section className="mt-6 flex flex-col gap-3 border-t border-white/5 pt-5">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+          {localCount === 0 ? "Not in your library" : "Need something else?"}
+        </span>
+        <button
+          type="button"
+          onClick={() => r.runSpotifySearch(query)}
+          disabled={r.searchLoading}
+          className="rounded-full bg-violet-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-violet-500 disabled:opacity-50"
+        >
+          {r.searchLoading ? "Searching…" : `Search Spotify for “${query}”`}
+        </button>
+      </div>
+
+      {r.searchError && <ErrorBanner message={r.searchError} />}
+
+      {r.spotifyResults.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {r.spotifyResults.map((track) => {
+            const added = r.isSelected(track.track_key);
+            return (
+              <div
+                key={track.track_key}
+                className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-2.5"
+              >
+                <img
+                  src={resolveArt(r.apiBase, track.album_art_url)}
+                  alt=""
+                  className="h-12 w-12 shrink-0 rounded-lg bg-zinc-800 object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.visibility = "hidden";
+                  }}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-white">{track.title}</div>
+                  <div className="truncate text-xs text-zinc-400">{track.artist}</div>
+                </div>
+                <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                  Spotify
+                </span>
+                <button
+                  type="button"
+                  disabled={added}
+                  onClick={() => r.addSearchTrack(track)}
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+                    added
+                      ? "bg-white/5 text-zinc-500"
+                      : "bg-violet-600 text-white hover:bg-violet-500"
+                  }`}
+                >
+                  {added ? "Added ✓" : "Add"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <ManualAddForm r={r} />
+    </section>
+  );
+}
+
+function ManualAddForm({ r }: { r: RecapState }) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [artist, setArtist] = useState("");
+  const [artUrl, setArtUrl] = useState("");
+
+  const submit = () => {
+    if (!title.trim() || !artist.trim()) return;
+    r.addCustomTrack({ title, artist, albumArtUrl: artUrl });
+    setTitle("");
+    setArtist("");
+    setArtUrl("");
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="self-start text-xs font-semibold text-violet-400 hover:text-violet-300"
+      >
+        Can't find it? Add manually
+      </button>
+    );
+  }
+
+  const inputClass =
+    "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none";
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+      <input className={inputClass} placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <input className={inputClass} placeholder="Artist" value={artist} onChange={(e) => setArtist(e.target.value)} />
+      <input className={inputClass} placeholder="Album art URL (optional)" value={artUrl} onChange={(e) => setArtUrl(e.target.value)} />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!title.trim() || !artist.trim()}
+          className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-500 disabled:opacity-50"
+        >
+          Add to picks
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="text-xs font-semibold text-zinc-400 hover:text-zinc-200"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
