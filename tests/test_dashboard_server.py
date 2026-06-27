@@ -81,6 +81,33 @@ def test_get_candidates_endpoint(monkeypatch):
     assert res["candidates"][0]["popularity"] == 50
 
 
+def test_get_candidates_uses_cached_popularity(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    db.migrate(conn)
+    db.insert_lastfm_play(
+        conn, track_id="track1", name="Song A", artist="Artist A",
+        album_art_url="http://art", played_at="2026-06-25T00:00:00Z",
+        played_at_unix=1782350000,
+    )
+    db.upsert_track_popularity(
+        conn, track_key="artist a\tsong a", listeners=900, popularity=33,
+        source="lastfm", fetched_at="t",
+    )
+    from contextlib import contextmanager
+    @contextmanager
+    def fake_connect():
+        yield conn
+    monkeypatch.setattr(db, "connect", fake_connect)
+
+    handler = DummyHandler()
+    parsed = urlparse("http://localhost:8000/api/candidates?days=7")
+    handler.handle_get_candidates(parsed)
+
+    res = json.loads(handler.wfile.content.decode("utf-8"))
+    assert res["candidates"][0]["popularity"] == 33
+
+
 def test_static_file_serving():
     handler = DummyHandler()
     parsed = urlparse("http://localhost:8000/")
