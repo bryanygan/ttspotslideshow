@@ -200,11 +200,19 @@ export function useRecap(): RecapState {
     localStorage.setItem(API_BASE_KEY, normalized);
   }, []);
 
+  const fetchAbortRef = useRef<AbortController | null>(null);
+
   const refetch = useCallback(async () => {
+    // Cancel any in-flight candidate fetch so stale responses can't overwrite
+    // the result of a newer timeframe selection.
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
     setLoading(true);
     setError(null);
     try {
-      const list = await fetchCandidates(apiBase, days);
+      const list = await fetchCandidates(apiBase, days, controller.signal);
       setCandidates(() => {
         const existingKeys = new Set(list.map((c) => c.track_key));
         const toKeep = selectedTracksRef.current.filter((c) => !existingKeys.has(c.track_key));
@@ -213,6 +221,7 @@ export function useRecap(): RecapState {
       setSummary(null);
       setSlideUrls([]);
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Failed to fetch candidates.");
     } finally {
       setLoading(false);

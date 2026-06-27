@@ -309,6 +309,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             playlist_id = payload.get("playlist_id", None)
             export_video = payload.get("export_video", False)
             layout = payload.get("layout", "2x2")
+            cover_only = payload.get("cover_only", False)
+            cover_columns = int(payload.get("cover_columns", 5))
         except Exception as e:
             self.send_response(400)
             self.send_header("Content-Type", "application/json")

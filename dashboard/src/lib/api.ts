@@ -10,8 +10,9 @@ export function resolveArt(apiBase: string, url: string): string {
 export async function fetchCandidates(
   apiBase: string,
   days: number,
+  signal?: AbortSignal,
 ): Promise<Candidate[]> {
-  const resp = await fetch(`${apiBase}/api/candidates?days=${days}`);
+  const resp = await fetch(`${apiBase}/api/candidates?days=${days}`, { signal });
   if (!resp.ok) throw new Error(`Couldn't reach the backend (HTTP ${resp.status}).`);
   const data = await resp.json();
   return data.candidates ?? [];
