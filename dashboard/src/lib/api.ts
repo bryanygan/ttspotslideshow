@@ -243,6 +243,24 @@ export async function parsePlaylist(
   return { source: data.source, tracks: data.tracks ?? [] };
 }
 
+// Search Spotify for tracks matching a free-text query.
+export async function searchSpotify(
+  apiBase: string,
+  q: string,
+): Promise<Candidate[]> {
+  const resp = await fetch(`${apiBase}/api/search/spotify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ q }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `Spotify search failed (HTTP ${resp.status}).`);
+  }
+  const data = await resp.json();
+  return data.tracks ?? [];
+}
+
 export interface SavePlaylistResult {
   playlist_id: string;
   url: string;

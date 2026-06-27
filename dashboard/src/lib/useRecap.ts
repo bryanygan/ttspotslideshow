@@ -11,6 +11,7 @@ import {
   fetchRecapSlides,
   parsePlaylist,
   savePlaylist,
+  searchSpotify,
   MissingCoverError,
   UnconfirmedCoverError,
 } from "./api";
@@ -19,6 +20,30 @@ import { PRESETS } from "./presets";
 
 const API_BASE_KEY = "api_base";
 const DEFAULT_API_BASE = "http://localhost:8000";
+
+// Mirrors text_norm.normalize on the backend (lowercase, trim, collapse
+// whitespace) so a manual entry dedupes against DB tracks by track_key.
+function normalizeKeyPart(s: string): string {
+  return s.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+// Fill the grid-required fields that search/manual candidates don't carry.
+function withCandidateDefaults(
+  partial: Partial<Candidate> & Pick<Candidate, "track_key" | "title" | "artist">,
+): Candidate {
+  return {
+    track_id: "",
+    album_art_url: "",
+    play_count: 0,
+    last_played_unix: 0,
+    primary_bucket: "unknown",
+    popularity: 50,
+    last_featured: null,
+    recently_featured: false,
+    times_featured: 0,
+    ...partial,
+  };
+}
 
 // Everything the two UI options need. One instance lives in <App/> and is
 // passed to whichever option is active, so selections survive the A/B toggle.
@@ -119,6 +144,17 @@ export interface RecapState {
   saveSelectionToSpotify: (name: string) => Promise<string | null>;
   playlistSaving: boolean;
 
+  // Browse search / custom lookup
+  searchQuery: string;
+  setSearchQuery: (v: string) => void;
+  spotifyResults: Candidate[];
+  searchLoading: boolean;
+  searchError: string | null;
+  runSpotifySearch: (q: string) => Promise<void>;
+  clearSearch: () => void;
+  addSearchTrack: (track: Candidate) => void;
+  addCustomTrack: (input: { title: string; artist: string; albumArtUrl: string }) => void;
+
   // Recap history
   recapHistory: RecapHistoryEntry[];
   recapHistoryLoading: boolean;
@@ -213,6 +249,11 @@ export function useRecap(): RecapState {
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [playlistSource, setPlaylistSource] = useState<"spotify" | "lastfm" | null>(null);
   const [playlistSaving, setPlaylistSaving] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [spotifyResults, setSpotifyResults] = useState<Candidate[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const [recapHistory, setRecapHistory] = useState<RecapHistoryEntry[]>([]);
   const [recapHistoryLoading, setRecapHistoryLoading] = useState(false);
@@ -676,6 +717,75 @@ export function useRecap(): RecapState {
     [apiBase],
   );
 
+  const runSpotifySearch = useCallback(
+    async (q: string) => {
+      const query = q.trim();
+      if (!query) return;
+      setSearchLoading(true);
+      setSearchError(null);
+      try {
+        const results = await searchSpotify(apiBase, query);
+        setSpotifyResults(results);
+        if (results.length === 0) setSearchError("No Spotify results for that query.");
+      } catch (err) {
+        setSpotifyResults([]);
+        setSearchError(err instanceof Error ? err.message : "Spotify search failed.");
+      } finally {
+        setSearchLoading(false);
+      }
+    },
+    [apiBase],
+  );
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery("");
+    setSpotifyResults([]);
+    setSearchError(null);
+  }, []);
+
+  // Merge a candidate into the pool (if new) and select it. Shared by Spotify
+  // results and manual entries.
+  const addCandidateToSelection = useCallback((cand: Candidate) => {
+    setCandidates((prev) =>
+      prev.some((c) => c.track_key === cand.track_key) ? prev : [...prev, cand],
+    );
+    setSelectedKeys((prev) => {
+      if (prev.has(cand.track_key)) return prev;
+      const next = new Set(prev);
+      next.add(cand.track_key);
+      return next;
+    });
+    setSelectedOrder((prev) =>
+      prev.includes(cand.track_key) ? prev : [...prev, cand.track_key],
+    );
+    setSummary(null);
+  }, []);
+
+  const addSearchTrack = useCallback(
+    (track: Candidate) => {
+      addCandidateToSelection(withCandidateDefaults(track));
+    },
+    [addCandidateToSelection],
+  );
+
+  const addCustomTrack = useCallback(
+    (input: { title: string; artist: string; albumArtUrl: string }) => {
+      const title = input.title.trim();
+      const artist = input.artist.trim();
+      if (!title || !artist) return;
+      const track_key = `${normalizeKeyPart(artist)}\t${normalizeKeyPart(title)}`;
+      addCandidateToSelection(
+        withCandidateDefaults({
+          track_key,
+          title,
+          artist,
+          album_art_url: input.albumArtUrl.trim(),
+        }),
+      );
+    },
+    [addCandidateToSelection],
+  );
+
   return {
     apiBase,
     setApiBase,
@@ -754,6 +864,15 @@ export function useRecap(): RecapState {
     clearPlaylistTracks,
     saveSelectionToSpotify,
     playlistSaving,
+    searchQuery,
+    setSearchQuery,
+    spotifyResults,
+    searchLoading,
+    searchError,
+    runSpotifySearch,
+    clearSearch,
+    addSearchTrack,
+    addCustomTrack,
     recapHistory,
     recapHistoryLoading,
     recapHistoryError,
