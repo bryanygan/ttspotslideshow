@@ -848,6 +848,34 @@ def auto_git_pull():
 
 
 def main():
+    # Redirect stdout and stderr to data/logs/dashboard.log
+    log_dir = Path("data") / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "dashboard.log"
+
+    class Tee:
+        def __init__(self, original, file_obj):
+            self.original = original
+            self.file_obj = file_obj
+
+        def write(self, data):
+            self.original.write(data)
+            self.file_obj.write(data)
+            self.original.flush()
+            self.file_obj.flush()
+
+        def flush(self):
+            self.original.flush()
+            self.file_obj.flush()
+
+    # Open log file in append mode with UTF-8 encoding
+    f = open(log_file, "a", encoding="utf-8")
+    sys.stdout = Tee(sys.stdout, f)
+    sys.stderr = Tee(sys.stderr, f)
+
+    # Print a separator for new run
+    print(f"\n--- Dashboard Server Starting: {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
+
     auto_git_pull()
     port = 8000
     server_address = ("", port)
