@@ -78,7 +78,7 @@ def search_spotify_art(artist: str, title: str) -> Optional[str]:
             if images:
                 # First one is highest resolution (usually 640x640)
                 return images[0].get("url")
-    except (Exception, SystemExit):
+    except Exception:
         # Gracefully handle lack of credentials or connection issues during tests/runs
         pass
     return None

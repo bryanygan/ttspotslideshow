@@ -10,8 +10,10 @@ from typing import Callable, Optional
 from webutil import DEFAULT_ART_HASH, is_placeholder  # noqa: F401
 
 
-def _default_fetch(url: str, dest: Path) -> None:
-    urllib.request.urlretrieve(url, dest)
+def _default_fetch(url: str, dest: Path, timeout: int = 20) -> None:
+    """Download url to dest with a hard timeout to avoid indefinite hangs."""
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        dest.write_bytes(resp.read())
 
 
 def load_art(

@@ -330,17 +330,9 @@ def main() -> None:
 
     print("Resolving tracks via iTunes Search API...")
     # Initialize connection to query local genre cache
-    try:
-        db.init_db()
-        conn = sqlite3_connect_helper()
-    except Exception:
-        conn = None
-
-    try:
+    db.init_db()
+    with db.connect() as conn:
         tracks = parse_tracks_from_lines(lines, conn=conn)
-    finally:
-        if conn:
-            conn.close()
 
     print(f"\nSuccessfully identified {len(tracks)} unique track(s).")
 
@@ -366,14 +358,6 @@ def main() -> None:
         summary = build_recap_slideshow(conn, Path(args.out_dir), tracks)
 
     print(f"Wrote {summary['slide_count']} slide(s) to: {summary['out_dir']}")
-
-
-def sqlite3_connect_helper():
-    import sqlite3
-
-    c = sqlite3.connect(db.DB_PATH)
-    c.row_factory = sqlite3.Row
-    return c
 
 
 if __name__ == "__main__":

@@ -412,8 +412,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     break
         except (BrokenPipeError, ConnectionResetError):
             pass  # client disconnected
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"SSE stream error: {e}", file=sys.stderr)
 
     def handle_get_slide(self, parsed):
         """Serve a rendered slide PNG from output/slides/<recap-id>/<file>."""
@@ -877,7 +877,9 @@ def main():
             self.file_obj.flush()
 
     # Open log file in append mode with UTF-8 encoding
+    import atexit
     f = open(log_file, "a", encoding="utf-8")
+    atexit.register(f.close)  # ensure handle is released on exit
     sys.stdout = Tee(sys.stdout, f)
     sys.stderr = Tee(sys.stderr, f)
 
