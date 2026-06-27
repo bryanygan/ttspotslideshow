@@ -92,3 +92,9 @@ pnpm-debug.log*
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# ──────────────────────────────────────────────────────────────
+# AI assistants / Temp test screenshots
+# ──────────────────────────────────────────────────────────────
+.qwen/
+screenshots/
