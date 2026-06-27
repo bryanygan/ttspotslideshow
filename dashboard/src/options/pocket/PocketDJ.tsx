@@ -2,10 +2,10 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import type { RecapState } from "../../lib/useRecap";
 import { WINDOWS, windowLabel, COVER_THEMES } from "../../lib/constants";
 import { resolveArt } from "../../lib/api";
+import { PRESETS } from "../../lib/presets";
 import { AlbumArt } from "../../ui/AlbumArt";
 import { ArtUploadButton } from "../../ui/ArtUploadButton";
 import { CoverControls } from "../../ui/CoverControls";
-import { PresetPanel } from "../../ui/PresetPanel";
 import { SelectedTray } from "../../ui/SelectedTray";
 import { SlideGallery } from "../../ui/SlideGallery";
 import { Summary } from "../../ui/Summary";
@@ -28,6 +28,7 @@ type Tab = "browse" | "picks" | "create" | "history";
 export function PocketDJ({ r }: { r: RecapState }) {
   const [tab, setTab] = useState<Tab>("browse");
   const historyLoaded = useRef(false);
+  const [pendingPresetId, setPendingPresetId] = useState<string | null>(null);
 
   // Load recap history lazily when first visiting the History tab.
   useEffect(() => {
@@ -37,9 +38,17 @@ export function PocketDJ({ r }: { r: RecapState }) {
     }
   }, [tab, r, r.loadRecapHistory]);
 
+  const handleSelectPreset = (presetId: string) => {
+    if (r.selectedKeys.size === 0) {
+      r.applyPreset(presetId, "overwrite");
+    } else {
+      setPendingPresetId(presetId);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0b0b12] pb-28 font-sans text-zinc-100">
-      {tab === "browse" && <BrowseHeader r={r} />}
+      {tab === "browse" && <BrowseHeader r={r} onSelectPreset={handleSelectPreset} />}
 
       <main className="mx-auto w-full max-w-3xl px-4 pt-4">
         {r.error && (
@@ -66,6 +75,48 @@ export function PocketDJ({ r }: { r: RecapState }) {
         </button>
       )}
 
+      {pendingPresetId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 text-zinc-100 shadow-2xl shadow-black/80 animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="font-display text-lg font-bold text-white flex items-center gap-2">
+              <span>✨</span> Apply Smart Fill
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+              You already have <strong className="text-white">{r.selectedKeys.size}</strong> track{r.selectedKeys.size === 1 ? "" : "s"} selected. How would you like to apply the preset?
+            </p>
+            <div className="mt-6 flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  r.applyPreset(pendingPresetId, "fill");
+                  setPendingPresetId(null);
+                }}
+                className="w-full rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-500 shadow-md shadow-violet-900/30 cursor-pointer"
+              >
+                Keep existing picks & fill to {r.quickSelectCount}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  r.applyPreset(pendingPresetId, "overwrite");
+                  setPendingPresetId(null);
+                }}
+                className="w-full rounded-xl border border-zinc-800 bg-zinc-900 py-3 text-sm font-semibold text-zinc-200 transition-colors hover:bg-zinc-800 hover:border-zinc-700 cursor-pointer"
+              >
+                Overwrite my existing picks
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingPresetId(null)}
+                className="w-full rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-400 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <TabBar tab={tab} setTab={setTab} pickCount={r.selectedKeys.size} />
     </div>
   );
@@ -73,7 +124,13 @@ export function PocketDJ({ r }: { r: RecapState }) {
 
 // ---- Browse ---------------------------------------------------------------
 
-function BrowseHeader({ r }: { r: RecapState }) {
+function BrowseHeader({ r, onSelectPreset }: { r: RecapState; onSelectPreset: (id: string) => void }) {
+  const layoutCounts = r.layout === "3x3"
+    ? [9, 18, 27, 36]
+    : r.layout === "4x4"
+    ? [16, 32, 48, 64]
+    : [12, 16, 20, 24]; // 2x2
+
   return (
     <div className="sticky top-11 z-30 border-b border-white/5 bg-[#0b0b12]/85 backdrop-blur">
       <div className="mx-auto flex max-w-3xl flex-col gap-2.5 px-4 py-3">
@@ -112,6 +169,41 @@ function BrowseHeader({ r }: { r: RecapState }) {
             </button>
           ))}
         </div>
+
+        <div className="flex items-center gap-2">
+          {/* Target Size Selection */}
+          <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Size</span>
+            <select
+              value={r.quickSelectCount}
+              onChange={(e) => r.setQuickSelectCount(parseInt(e.target.value))}
+              className="bg-transparent text-xs font-bold text-zinc-300 focus:outline-none cursor-pointer"
+            >
+              {layoutCounts.map((n) => (
+                <option key={n} value={n} className="bg-zinc-950 text-zinc-300">{n}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Smart Fill Preset Dropdown */}
+          <select
+            value=""
+            onChange={(e) => {
+              const presetId = e.target.value;
+              if (presetId) onSelectPreset(presetId);
+            }}
+            disabled={r.candidates.length === 0}
+            className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-zinc-300 focus:border-violet-500 focus:outline-none disabled:opacity-40 cursor-pointer"
+          >
+            <option value="" className="bg-zinc-950 text-zinc-400">✨ Smart Fill Selection...</option>
+            {PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id} className="bg-zinc-950 text-zinc-300">
+                {preset.emoji} {preset.label} — {preset.hint}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
             {r.candidates.length} tracks
@@ -399,11 +491,6 @@ function PicksTab({ r }: { r: RecapState }) {
           </button>
         )}
       </div>
-
-      <section className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.02] p-4">
-        <h3 className="font-display text-sm font-semibold text-zinc-300">Smart fill</h3>
-        <PresetPanel r={r} />
-      </section>
 
       <section className="flex flex-col gap-3">
         <h3 className="font-display text-sm font-semibold text-zinc-300">

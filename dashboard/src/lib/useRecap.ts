@@ -71,7 +71,7 @@ export interface RecapState {
 
   quickSelectCount: number;
   setQuickSelectCount: (n: number) => void;
-  applyPreset: (presetId: string) => void;
+  applyPreset: (presetId: string, mode?: "overwrite" | "fill") => void;
 
   moveSelected: (key: string, dir: -1 | 1) => void;
   swapSelected: (oldKey: string, newKey: string) => void;
@@ -365,15 +365,30 @@ export function useRecap(): RecapState {
   }, []);
 
   const applyPreset = useCallback(
-    (presetId: string) => {
+    (presetId: string, mode: "overwrite" | "fill" = "overwrite") => {
       const preset = PRESETS.find((p) => p.id === presetId);
       if (!preset) return;
-      const keys = preset.fn(candidates, quickSelectCount);
-      setSelectedKeys(new Set(keys));
-      setSelectedOrder(keys);
+      if (mode === "fill") {
+        const keys = preset.fn(candidates, candidates.length);
+        const newOrder = [...selectedOrder];
+        const newKeys = new Set(selectedKeys);
+        for (const key of keys) {
+          if (newOrder.length >= quickSelectCount) break;
+          if (!newKeys.has(key)) {
+            newKeys.add(key);
+            newOrder.push(key);
+          }
+        }
+        setSelectedKeys(newKeys);
+        setSelectedOrder(newOrder);
+      } else {
+        const keys = preset.fn(candidates, quickSelectCount);
+        setSelectedKeys(new Set(keys));
+        setSelectedOrder(keys);
+      }
       setSummary(null);
     },
-    [candidates, quickSelectCount],
+    [candidates, quickSelectCount, selectedKeys, selectedOrder],
   );
 
   const moveSelected = useCallback((key: string, dir: -1 | 1) => {
