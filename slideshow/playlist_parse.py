@@ -192,7 +192,7 @@ def parse_spotify_playlist(playlist_id: str, conn=None) -> list[dict]:
     return _dedupe(candidates)
 
 
-def search_spotify_tracks(query: str, conn=None, limit: int = 20) -> list[dict]:
+def search_spotify_tracks(query: str, conn=None, limit: int = 10) -> list[dict]:
     """Search Spotify for tracks matching `query`; return candidate dicts.
 
     Each dict matches the playlist/OCR candidate shape plus a `popularity`

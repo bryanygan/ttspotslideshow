@@ -8,7 +8,7 @@ class FakeSpotify:
     def __init__(self, items):
         self._items = items
 
-    def search(self, q, type="track", limit=20):
+    def search(self, q, type="track", limit=10):
         return {"tracks": {"items": self._items}}
 
 
