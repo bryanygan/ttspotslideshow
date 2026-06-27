@@ -448,7 +448,14 @@ export function useRecap(): RecapState {
 
         setOcrTracks((prev) => {
           const existingKeys = new Set(prev.map((t) => t.track_key));
-          const uniqueNew = allNewTracks.filter((t) => !existingKeys.has(t.track_key));
+          const seenNew = new Set<string>();
+          const uniqueNew: Candidate[] = [];
+          for (const track of allNewTracks) {
+            if (!existingKeys.has(track.track_key) && !seenNew.has(track.track_key)) {
+              seenNew.add(track.track_key);
+              uniqueNew.push(track);
+            }
+          }
           return [...prev, ...uniqueNew];
         });
       } catch (err) {
