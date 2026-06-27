@@ -6,9 +6,9 @@ from PIL import ImageFont
 
 FONT_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
 FONT_FILES = {
-    "bold": "Montserrat-Bold.ttf",
-    "medium": "Montserrat-Medium.ttf",
-    "regular": "Montserrat-Regular.ttf",
+    "bold": "SpotifyMix-Bold.ttf",
+    "medium": "SpotifyMix-Medium.ttf",
+    "regular": "SpotifyMix-Regular.ttf",
 }
 
 _cache: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
