@@ -273,7 +273,7 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                      overrides_dir=None, cover_title=None, cover_subtitle=None,
                      cover_theme=None, watermark=None, cover_pool=None,
                      progress=None, allow_itunes_covers=False, layout="2x2",
-                     cover_only=False, cover_columns=5):
+                     cover_only=False, cover_columns=5, width=None, height=None):
     """Resolve art, render cards, write 4-up slides, and record featured tracks.
 
     Returns (slide_count, genre_spread). Shared by build_slideshow and
@@ -284,6 +284,11 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
     from webutil import is_placeholder
     import hashlib
 
+    slide_w = width if width is not None else 1080
+    slide_h = height if height is not None else 1700
+    cover_w = slide_w
+    cover_h = height if height is not None else 1920
+
     if cover_only:
         out_dir.mkdir(parents=True, exist_ok=True)
         if progress:
@@ -292,7 +297,8 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
         art_paths_collage = _collage_art_paths(conn, cache_dir, overrides_dir, cover_pool=cover_pool)
         cover = render_cover_collage(
             art_paths_collage, cover_title or "", cover_subtitle or "",
-            theme=cover_theme, footer_text=watermark, columns=cover_columns
+            theme=cover_theme, footer_text=watermark, columns=cover_columns,
+            width=cover_w, height=cover_h
         )
         cover.save(out_dir / "slide_1.png")
         if progress:
@@ -403,7 +409,8 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
         art_paths_collage = _collage_art_paths(conn, cache_dir, overrides_dir, cover_pool=cover_pool)
         cover = render_cover_collage(
             art_paths_collage, cover_title, cover_subtitle or "",
-            theme=cover_theme, footer_text=watermark, columns=cover_columns
+            theme=cover_theme, footer_text=watermark, columns=cover_columns,
+            width=cover_w, height=cover_h
         )
         slide_count += 1
         cover.save(out_dir / f"slide_{slide_count}.png")
@@ -414,7 +421,7 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
     for i in range(0, len(cards), slide_size):
         slide_count += 1
         collage_done += 1
-        collage(cards[i:i + slide_size], layout=layout, watermark=watermark).save(out_dir / f"slide_{slide_count}.png")
+        collage(cards[i:i + slide_size], layout=layout, watermark=watermark, width=slide_w, height=slide_h).save(out_dir / f"slide_{slide_count}.png")
         if progress:
             progress.emit("collage", collage_done, num_collages,
                           f"Slide {slide_count} composed")
@@ -432,7 +439,7 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
                     today=None, fetch=None, cache_dir=None, overrides_dir=None,
                     bypass_novelty=False, cover_title=None, cover_subtitle=None,
                     cover_theme=None, watermark=None, playlist_id=None,
-                    progress=None, layout="2x2") -> dict:
+                    progress=None, layout="2x2", width=None, height=None) -> dict:
     """Build the dated slide set. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -462,7 +469,8 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
     slide_count, spread = _render_and_save(
         conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
         cover_title=cover_title, cover_subtitle=cover_subtitle,
-        cover_theme=cover_theme, watermark=watermark, progress=progress, layout=layout
+        cover_theme=cover_theme, watermark=watermark, progress=progress, layout=layout,
+        width=width, height=height
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
@@ -484,7 +492,8 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
                           recap_id=None, cover_pool=None, playlist_id=None,
                           export_video=False, progress=None,
                           allow_itunes_covers=False, layout="2x2",
-                          cover_only=False, cover_columns=5) -> dict:
+                          cover_only=False, cover_columns=5,
+                          width=None, height=None) -> dict:
     """Build slides for specific selected tracks. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -521,7 +530,8 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
         cover_title=cover_title, cover_subtitle=cover_subtitle,
         cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool,
         progress=progress, allow_itunes_covers=allow_itunes_covers, layout=layout,
-        cover_only=cover_only, cover_columns=cover_columns
+        cover_only=cover_only, cover_columns=cover_columns,
+        width=width, height=height
     )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread

@@ -177,6 +177,53 @@ export function CoverControls({ r }: { r: RecapState }) {
           ))}
         </div>
       </div>
+
+      <div className="flex flex-col gap-3 border-t border-zinc-800/80 pt-4 mt-2">
+        <div className="flex items-center justify-between">
+          <span className={labelClass}>Slide Dimensions</span>
+          <label className="flex cursor-pointer select-none items-center gap-2">
+            <span className="text-[11px] text-zinc-400">Lock Aspect Ratio</span>
+            <input
+              type="checkbox"
+              checked={r.lockAspectRatio}
+              onChange={r.toggleLockAspectRatio}
+              className="h-4 w-4 rounded accent-violet-600"
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex justify-between text-xs">
+            <span className="text-zinc-400">Width</span>
+            <span className="font-mono text-zinc-200">{r.slideWidth}px</span>
+          </div>
+          <input
+            type="range"
+            min={480}
+            max={2160}
+            step={10}
+            value={r.slideWidth}
+            onChange={(e) => r.setSlideWidth(parseInt(e.target.value))}
+            className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex justify-between text-xs">
+            <span className="text-zinc-400">Height</span>
+            <span className="font-mono text-zinc-200">{r.slideHeight}px</span>
+          </div>
+          <input
+            type="range"
+            min={480}
+            max={3840}
+            step={10}
+            value={r.slideHeight}
+            onChange={(e) => r.setSlideHeight(parseInt(e.target.value))}
+            className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+          />
+        </div>
+      </div>
     </div>
   );
 }

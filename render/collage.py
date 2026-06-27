@@ -35,7 +35,8 @@ LAYOUT_CONFIGS = {
 }
 
 
-def collage(cards: list[Image.Image], layout: str = "2x2", watermark: str = None) -> Image.Image:
+def collage(cards: list[Image.Image], layout: str = "2x2", watermark: str = None,
+            width: int = 1080, height: int = 1700) -> Image.Image:
     """Place cards in a grid layout (2x2, 3x3, or 4x4) and paste them on the canvas."""
     if layout not in LAYOUT_CONFIGS:
         raise ValueError(f"Unsupported layout: {layout}")
@@ -45,14 +46,35 @@ def collage(cards: list[Image.Image], layout: str = "2x2", watermark: str = None
     if len(cards) != expected_count:
         raise ValueError(f"collage layout {layout} requires exactly {expected_count} cards, got {len(cards)}")
 
-    slide = Image.new("RGB", (SLIDE_W, SLIDE_H))
-    card_w, card_h = cfg["card_size"]
-    positions = cfg["positions"]
+    slide = Image.new("RGB", (width, height))
+    cols = 3 if layout == "3x3" else (4 if layout == "4x4" else 2)
+    rows = cols
+    
+    card_w = width // cols
+    card_h = height // rows
+
+    positions = []
+    for r in range(rows):
+        for c in range(cols):
+            positions.append((c * card_w, r * card_h))
 
     for card, pos in zip(cards, positions):
-        if card.size != (card_w, card_h):
-            card = card.resize((card_w, card_h), resample=Image.LANCZOS)
-        slide.paste(card, pos)
+        # Scale proportionally and center card in its slot to prevent distortion
+        card_aspect = card.width / card.height
+        slot_aspect = card_w / card_h
+        if card_aspect > slot_aspect:
+            new_w = card_w
+            new_h = int(card_w / card_aspect)
+        else:
+            new_h = card_h
+            new_w = int(card_h * card_aspect)
+
+        if card.size != (new_w, new_h):
+            card = card.resize((new_w, new_h), resample=Image.LANCZOS)
+
+        dx = (card_w - new_w) // 2
+        dy = (card_h - new_h) // 2
+        slide.paste(card, (pos[0] + dx, pos[1] + dy))
 
     if watermark:
         from PIL import ImageDraw
@@ -62,8 +84,8 @@ def collage(cards: list[Image.Image], layout: str = "2x2", watermark: str = None
         font = load_font("medium", 24)
         text = watermark.upper()
         w = font.getlength(text)
-        x = (SLIDE_W - w) // 2
-        y = SLIDE_H - 60
+        x = (width - w) // 2
+        y = height - 60
         padding_h = 16
         padding_v = 8
         # Draw a semi-transparent black pill behind the watermark to ensure readability on any background

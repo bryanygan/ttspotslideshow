@@ -281,10 +281,10 @@ function CreateTab({ r }: { r: RecapState }) {
       [arts[i], arts[j]] = [arts[j], arts[i]];
     }
     const cols = r.coverColumns;
-    const rows = Math.ceil(cols * (16 / 9));
+    const rows = Math.ceil(cols * (r.slideHeight / r.slideWidth));
     const needed = cols * rows;
     return arts.slice(0, needed);
-  }, [r.candidates, r.apiBase, r.coverColumns]);
+  }, [r.candidates, r.apiBase, r.coverColumns, r.slideWidth, r.slideHeight]);
 
   return (
     <div className="flex flex-col gap-6 pt-2">
@@ -293,7 +293,10 @@ function CreateTab({ r }: { r: RecapState }) {
       {/* Hero: a live preview of the collage cover as the user tunes it. */}
       {r.includeCover && (
         <div className="flex flex-col items-center gap-2">
-          <div className="relative aspect-[9/16] w-44 overflow-hidden rounded-2xl shadow-xl">
+          <div
+            className="relative w-44 overflow-hidden rounded-2xl shadow-xl"
+            style={{ aspectRatio: `${r.slideWidth} / ${r.slideHeight}` }}
+          >
             <div
               className="absolute inset-0 grid"
               style={{ gridTemplateColumns: `repeat(${r.coverColumns}, minmax(0, 1fr))` }}

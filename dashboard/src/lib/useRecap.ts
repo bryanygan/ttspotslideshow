@@ -67,6 +67,13 @@ export interface RecapState {
   setCoverOnly: (v: boolean) => void;
   coverColumns: number;
   setCoverColumns: (v: number) => void;
+  slideWidth: number;
+  setSlideWidth: (w: number) => void;
+  slideHeight: number;
+  setSlideHeight: (h: number) => void;
+  lockAspectRatio: boolean;
+  setLockAspectRatio: (v: boolean) => void;
+  toggleLockAspectRatio: () => void;
 
   // Generation
   generating: boolean;
@@ -157,6 +164,34 @@ export function useRecap(): RecapState {
   const [watermark, setWatermark] = useState("");
   const [coverOnly, setCoverOnly] = useState(false);
   const [coverColumns, setCoverColumns] = useState(5);
+  const [slideWidth, setSlideWidthRaw] = useState(1080);
+  const [slideHeight, setSlideHeightRaw] = useState(1700);
+  const [lockAspectRatio, setLockAspectRatio] = useState(true);
+  const [aspectRatio, setAspectRatio] = useState(1080 / 1700);
+
+  const toggleLockAspectRatio = useCallback(() => {
+    setLockAspectRatio((prev) => {
+      const next = !prev;
+      if (next) {
+        setAspectRatio(slideWidth / slideHeight);
+      }
+      return next;
+    });
+  }, [slideWidth, slideHeight]);
+
+  const setSlideWidth = useCallback((w: number) => {
+    setSlideWidthRaw(w);
+    if (lockAspectRatio) {
+      setSlideHeightRaw(Math.round(w / aspectRatio));
+    }
+  }, [lockAspectRatio, aspectRatio]);
+
+  const setSlideHeight = useCallback((h: number) => {
+    setSlideHeightRaw(h);
+    if (lockAspectRatio) {
+      setSlideWidthRaw(Math.round(h * aspectRatio));
+    }
+  }, [lockAspectRatio, aspectRatio]);
 
   const [generating, setGenerating] = useState(false);
   const [summary, setSummary] = useState<GenerateSummary | null>(null);
@@ -391,6 +426,8 @@ export function useRecap(): RecapState {
         layout,
         cover_only: coverOnly,
         cover_columns: coverColumns,
+        width: slideWidth,
+        height: slideHeight,
       }, (evt) => {
         setProgress(evt.progress);
         setProgressStage(evt.stage);
@@ -424,6 +461,8 @@ export function useRecap(): RecapState {
     layout,
     coverOnly,
     coverColumns,
+    slideWidth,
+    slideHeight,
   ]);
 
   const uploadArtFor = useCallback(
@@ -675,6 +714,13 @@ export function useRecap(): RecapState {
     setCoverOnly,
     coverColumns,
     setCoverColumns,
+    slideWidth,
+    setSlideWidth,
+    slideHeight,
+    setSlideHeight,
+    lockAspectRatio,
+    setLockAspectRatio,
+    toggleLockAspectRatio,
     generating,
     summary,
     slideUrls,

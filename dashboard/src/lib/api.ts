@@ -28,6 +28,8 @@ export interface GeneratePayload {
   layout?: "2x2" | "3x3" | "4x4";
   cover_only?: boolean;
   cover_columns?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface GenerateResult {
