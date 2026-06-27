@@ -37,6 +37,9 @@ LASTFM_SHARED_SECRET = os.getenv("LAST_FM_SHARED_SECRET")
 LASTFM_EXPORT_PATH = os.getenv("LASTFM_EXPORT_PATH")
 LASTFM_USER = os.getenv("LAST_FM_USER")
 
+# --- ListenBrainz (popularity fallback) ---
+LISTENBRAINZ_TOKEN = os.getenv("LISTENBRAINZ_TOKEN")
+
 # --- Local file paths ---
 DATA_DIR = PROJECT_ROOT / "data"
 DB_PATH = DATA_DIR / "plays.db"

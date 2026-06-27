@@ -79,6 +79,18 @@ Items are ranked by **Impact × Effort** (High/Medium/Low) and include completio
   if it's ever exposed publicly.
 * **Impact**: Medium | **Effort**: Low
 
+### 13. Replace Deprecated Spotify Popularity Field
+* **Status**: Done
+* **What**: Spotify removed `track.popularity` (Feb 2026). Restored a global
+  popularity signal from Last.fm `track.getInfo` listeners (primary) with a
+  ListenBrainz metadata-lookup → popularity-API fallback, log-normalized to
+  0–100 (`ingest/popularity.py`). Cached per-track in a new `track_popularity`
+  table; filled by a resumable `python -m ingest.enrich_popularity` CLI wired
+  into `run_bidaily.py`. The dashboard now reads the cache (dropping the dead
+  Spotify call); unmatched tracks read as neutral 50. Restores the "Underrated"
+  sort. Added `LISTENBRAINZ_TOKEN` to config/.env.
+* **Impact**: Medium | **Effort**: Medium
+
 ### 12. Playlist Parsing and Generation
 * **Status**: Done
 * **What**: `slideshow/playlist_parse.py` resolves a Spotify playlist URL/ID (full
@@ -99,8 +111,7 @@ Items are ranked by **Impact × Effort** (High/Medium/Low) and include completio
 | 1 | Audio snippet sync for MP4 videos | High | Medium | 2–3 hrs |
 | 2 | Semi-automated TikTok uploading (Playwright) | High | High | 4–6 hrs |
 | 3 | Bulk art override upload | Low | Low | 30 min |
-| 4 | Replace deprecated popularity field | Medium | Medium | 1–2 hrs |
-| 5 | Caption preview in dashboard Create tab | Low | Low | 20 min |
+| 4 | Caption preview in dashboard Create tab | Low | Low | 20 min |
 
 ### 1. Audio Snippet Sync for MP4 Videos
 * Extend `video_export.py` to download Spotify `preview_url` clips (30s each), trim to fit slide duration, and overlay audio onto each slide segment using `moviepy` or `ffmpeg`.
@@ -119,11 +130,6 @@ Items are ranked by **Impact × Effort** (High/Medium/Low) and include completio
 * Currently you upload cover art per-track from the dashboard.
 * Add a bulk mode: select multiple tracks → upload one image → applies to all (useful for compilation albums where Spotify splits covers).
 
-### 4. Replace Deprecated Spotify Popularity Field
-* Spotify removed `track.popularity` in Feb 2026. Currently defaulting to 50.
-* Track a *personal* popularity metric based on play-count percentile across your history so the "underrated score" becomes meaningful again.
-* **Impact**: Restores the "Underrated" sort as a useful signal.
-
-### 5. Caption Preview in Dashboard Create Tab
+### 4. Caption Preview in Dashboard Create Tab
 * Show the auto-generated caption + hashtags in the Create tab before generating, so the user can edit or approve it.
 * Copy-to-clipboard button for easy pasting into TikTok.

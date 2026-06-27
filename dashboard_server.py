@@ -134,53 +134,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
             return
 
-        # Collect track IDs that don't have cached popularity in the DB.
-        # Filter to make sure we only query Spotify for valid 22-character alphanumeric Spotify track IDs,
-        # ignoring Last.fm UUIDs (which contain hyphens and are 36 characters long).
-        uncached_candidates = [
-            c for c in candidates
-            if c.get("track_id")
-            and len(c["track_id"]) == 22
-            and c["track_id"].isalnum()
-            and c.get("popularity") is None
-        ]
-        track_ids_to_fetch = [c["track_id"] for c in uncached_candidates]
-
-        # Initialize popularities dict with already cached database values
-        popularities = {c["track_id"]: c["popularity"] for c in candidates if c.get("track_id") and c.get("popularity") is not None}
-
-        if track_ids_to_fetch:
-            try:
-                from spotify_client import get_client
-
-                sp = get_client()
-                fetched_popularities = {}
-                # Batch in chunks of 50
-                for i in range(0, len(track_ids_to_fetch), 50):
-                    chunk = track_ids_to_fetch[i : i + 50]
-                    tracks_data = sp.tracks(chunk)
-                    for t in tracks_data.get("tracks", []):
-                        if t:
-                            fetched_popularities[t["id"]] = t.get("popularity", 50)
-
-                # Write newly fetched popularities to the DB so they are cached!
-                if fetched_popularities:
-                    try:
-                        with db.connect() as conn:
-                            for tid, pop in fetched_popularities.items():
-                                conn.execute("UPDATE plays SET popularity = ? WHERE track_id = ?", (pop, tid))
-                            # Merge them into the local dictionary
-                            popularities.update(fetched_popularities)
-                    except Exception as db_err:
-                        print(f"Failed to cache popularities to DB: {db_err}", file=sys.stderr)
-            except Exception as sp_err:
-                print(f"Failed to fetch popularities from Spotify: {sp_err}", file=sys.stderr)
+        # Popularity now comes from the track_popularity cache (Last.fm +
+        # ListenBrainz), filled by ingest.enrich_popularity. Spotify removed
+        # track.popularity (Feb 2026), so there's no live call here anymore.
+        pop_cache = {}
+        try:
+            with db.connect() as conn:
+                for c in candidates:
+                    row = db.get_track_popularity(conn, c["track_key"])
+                    if row is not None and row["popularity"] is not None:
+                        pop_cache[c["track_key"]] = row["popularity"]
+        except Exception as pop_err:
+            print(f"Failed to read cached popularity: {pop_err}", file=sys.stderr)
 
         # Decorate candidates with popularity, last_featured, and overrides details
         for c in candidates:
-            tid = c.get("track_id")
-            # If still None (e.g. no track_id or API failed), default to 50
-            c["popularity"] = popularities.get(tid) if popularities.get(tid) is not None else 50
+            # Unmatched/uncached tracks read as neutral 50, never as obscure.
+            c["popularity"] = pop_cache.get(c["track_key"], 50)
             c["last_featured"] = featured.get(c["track_key"], None)
 
             rf = recent_featured.get(c["track_key"])

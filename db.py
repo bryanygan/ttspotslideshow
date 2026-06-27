@@ -47,6 +47,16 @@ CREATE TABLE IF NOT EXISTS artist_genres (
 );
 """
 
+CREATE_TRACK_POPULARITY = """
+CREATE TABLE IF NOT EXISTS track_popularity (
+    track_key   TEXT PRIMARY KEY,
+    listeners   INTEGER,
+    popularity  INTEGER,
+    source      TEXT NOT NULL,
+    fetched_at  TEXT
+);
+"""
+
 CREATE_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
 CREATE INDEX IF NOT EXISTS idx_plays_unix ON plays(played_at_unix);
@@ -103,6 +113,7 @@ def migrate(conn: sqlite3.Connection) -> None:
             )
         conn.execute("DROP TABLE plays_old")
     conn.execute(CREATE_ARTIST_GENRES)
+    conn.execute(CREATE_TRACK_POPULARITY)
     conn.execute(CREATE_ARTISTS)
     conn.execute(CREATE_FEATURED)
     conn.execute(
@@ -362,6 +373,56 @@ def get_artist_genre(conn: sqlite3.Connection, artist_key: str):
     return conn.execute(
         "SELECT * FROM artist_genres WHERE artist_key = ?", (artist_key,)
     ).fetchone()
+
+
+def upsert_track_popularity(
+    conn: sqlite3.Connection,
+    *,
+    track_key: str,
+    listeners: Optional[int],
+    popularity: Optional[int],
+    source: str,
+    fetched_at: str,
+) -> None:
+    """Insert/replace one track's resolved popularity record."""
+    conn.execute(
+        """
+        INSERT INTO track_popularity
+            (track_key, listeners, popularity, source, fetched_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(track_key) DO UPDATE SET
+            listeners=excluded.listeners,
+            popularity=excluded.popularity,
+            source=excluded.source,
+            fetched_at=excluded.fetched_at
+        """,
+        (track_key, listeners, popularity, source, fetched_at),
+    )
+
+
+def get_track_popularity(conn: sqlite3.Connection, track_key: str):
+    """Return the cached track_popularity row, or None."""
+    return conn.execute(
+        "SELECT * FROM track_popularity WHERE track_key = ?", (track_key,)
+    ).fetchone()
+
+
+def track_keys_missing_popularity(conn: sqlite3.Connection) -> list:
+    """Canonical track_keys that have no cached popularity row yet."""
+    cached = {
+        r["track_key"]
+        for r in conn.execute("SELECT track_key FROM track_popularity").fetchall()
+    }
+    seen = []
+    out = []
+    for r in canonical_plays(conn):
+        track_key = normalize(r["artist"]) + "\t" + normalize(r["name"])
+        if track_key in seen:
+            continue
+        seen.append(track_key)
+        if track_key not in cached:
+            out.append(track_key)
+    return out
 
 
 def bucket_distribution(conn: sqlite3.Connection) -> dict:
