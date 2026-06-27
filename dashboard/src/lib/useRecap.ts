@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import type { Candidate, GenerateSummary, SortBy } from "./types";
 import { underratedScore } from "./types";
 import {
@@ -185,9 +185,11 @@ export function useRecap(): RecapState {
     setError(null);
     try {
       const list = await fetchCandidates(apiBase, days);
-      setCandidates(list);
-      setSelectedKeys(new Set());
-      setSelectedOrder([]);
+      setCandidates(() => {
+        const existingKeys = new Set(list.map((c) => c.track_key));
+        const toKeep = selectedTracksRef.current.filter((c) => !existingKeys.has(c.track_key));
+        return [...list, ...toKeep];
+      });
       setSummary(null);
       setSlideUrls([]);
     } catch (err) {
@@ -224,6 +226,11 @@ export function useRecap(): RecapState {
         .filter((c): c is Candidate => c !== undefined),
     [selectedOrder, candidates],
   );
+
+  const selectedTracksRef = useRef<Candidate[]>([]);
+  useEffect(() => {
+    selectedTracksRef.current = selectedTracks;
+  }, [selectedTracks]);
 
   const isSelected = useCallback(
     (key: string) => selectedKeys.has(key),
