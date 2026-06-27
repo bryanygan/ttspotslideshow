@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { RecapState } from "../lib/useRecap";
 import { COUNTS } from "../lib/constants";
 import { PRESETS } from "../lib/presets";
@@ -5,6 +6,15 @@ import { PRESETS } from "../lib/presets";
 // Target-size selector + the six smart-selection presets. Shared by both
 // options; applying a preset replaces the current selection.
 export function PresetPanel({ r }: { r: RecapState }) {
+  const [customRaw, setCustomRaw] = useState("");
+  const isCustom = !(COUNTS as readonly number[]).includes(r.quickSelectCount);
+
+  function commitCustom(raw: string) {
+    const n = parseInt(raw, 10);
+    if (n > 0) r.setQuickSelectCount(n);
+    setCustomRaw("");
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
@@ -16,12 +26,12 @@ export function PresetPanel({ r }: { r: RecapState }) {
             {r.quickSelectCount} tracks
           </span>
         </div>
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-5 gap-1.5">
           {COUNTS.map((n) => (
             <button
               key={n}
               type="button"
-              onClick={() => r.setQuickSelectCount(n)}
+              onClick={() => { r.setQuickSelectCount(n); setCustomRaw(""); }}
               className={`rounded-lg border py-2 text-sm font-semibold transition-all ${
                 r.quickSelectCount === n
                   ? "border-violet-500 bg-violet-500/15 text-violet-200"
@@ -31,6 +41,21 @@ export function PresetPanel({ r }: { r: RecapState }) {
               {n}
             </button>
           ))}
+          <input
+            type="number"
+            min={4}
+            step={4}
+            value={customRaw}
+            onChange={(e) => setCustomRaw(e.target.value)}
+            onBlur={(e) => commitCustom(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") commitCustom((e.target as HTMLInputElement).value); }}
+            placeholder={isCustom ? String(r.quickSelectCount) : "…"}
+            className={`rounded-lg border py-2 text-center text-sm font-semibold transition-all focus:outline-none ${
+              isCustom
+                ? "border-violet-500 bg-violet-500/15 text-violet-200 placeholder:text-violet-300"
+                : "border-zinc-800 bg-transparent text-zinc-400 placeholder:text-zinc-600 focus:border-zinc-600"
+            }`}
+          />
         </div>
       </div>
 

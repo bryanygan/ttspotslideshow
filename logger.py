@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import logging
+import time
 from datetime import datetime, timezone
 
 import spotipy
@@ -20,6 +21,53 @@ from spotify_client import get_client
 from logsetup import setup_logging
 
 LOG = logging.getLogger("logger")
+
+# Retry tuning for Spotify rate limits (429). The client is configured with
+# retries=0 so spotipy raises immediately; we own the backoff here so a single
+# 429 doesn't silently lose a 3-hour window of plays.
+_MAX_RETRIES = 5
+_BASE_BACKOFF = 2.0  # seconds; doubles each attempt (2, 4, 8, 16, 32)
+_MAX_BACKOFF = 60.0  # cap any single sleep (including Retry-After)
+
+
+def _retry_after_seconds(exc: spotipy.SpotifyException) -> float | None:
+    """Return the server-provided Retry-After (seconds) from a 429, if any."""
+    headers = getattr(exc, "headers", None) or {}
+    raw = headers.get("Retry-After") or headers.get("retry-after")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def with_retry(call, *args, **kwargs):
+    """Call a Spotify API method, retrying on 429 with exponential backoff.
+
+    Honours the server's Retry-After header when present, otherwise falls back to
+    exponential backoff. Non-429 SpotifyExceptions propagate immediately. Raises
+    the last 429 if every attempt is exhausted.
+    """
+    last_exc: spotipy.SpotifyException | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return call(*args, **kwargs)
+        except spotipy.SpotifyException as exc:
+            if exc.http_status != 429:
+                raise
+            last_exc = exc
+            retry_after = _retry_after_seconds(exc)
+            backoff = retry_after if retry_after is not None else _BASE_BACKOFF * (2 ** attempt)
+            backoff = min(backoff, _MAX_BACKOFF)
+            LOG.warning(
+                "Spotify rate-limited (429). Attempt %d/%d — backing off %.1fs.",
+                attempt + 1, _MAX_RETRIES, backoff,
+            )
+            time.sleep(backoff)
+    # Exhausted all attempts — surface the last 429 to the caller.
+    assert last_exc is not None
+    raise last_exc
 
 
 def _iso_to_unix_ms(iso_ts: str) -> int:
@@ -50,7 +98,7 @@ def _resolve_genre(sp: spotipy.Spotify, conn, artist_id: str | None,
 
     # Not cached yet -> ask Spotify once, then remember the answer.
     try:
-        artist = sp.artist(artist_id)
+        artist = with_retry(sp.artist, artist_id)
         genres = artist.get("genres") or []
     except spotipy.SpotifyException:
         genres = []
@@ -76,8 +124,9 @@ def log_recent_plays() -> int:
     after_ms = _iso_to_unix_ms(after) if after else None
 
     # recently-played returns the most recent plays (max 50). 'after' limits the
-    # response to plays newer than a cursor so repeat runs stay cheap.
-    response = sp.current_user_recently_played(limit=50, after=after_ms)
+    # response to plays newer than a cursor so repeat runs stay cheap. Wrapped in
+    # with_retry so a transient 429 doesn't drop the whole window of plays.
+    response = with_retry(sp.current_user_recently_played, limit=50, after=after_ms)
     items = response.get("items", [])
 
     added = 0

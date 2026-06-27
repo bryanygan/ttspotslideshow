@@ -20,6 +20,7 @@ export type SortBy = "plays" | "underrated";
 export interface GenerateSummary {
   slide_count: number;
   out_dir: string;
+  caption?: string;
   [key: string]: unknown;
 }
 

@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import platform
 import re
 import subprocess
 import sys
@@ -93,6 +94,57 @@ def run_windows_ocr(image_path: Path) -> list[str]:
     except Exception as e:
         print(f"Error running native Windows OCR: {e}", file=sys.stderr)
         return []
+
+
+def run_tesseract_ocr(image_path: Path) -> list[str]:
+    """Cross-platform OCR fallback using Tesseract via pytesseract.
+
+    Returns one cleaned line per detected text line, or [] if pytesseract /
+    the Tesseract binary isn't available or fails. This is the portability
+    escape hatch for non-Windows hosts (Linux/macOS) where the WinRT OCR engine
+    used by run_windows_ocr() doesn't exist.
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        print(
+            "Tesseract fallback unavailable: install with `pip install pytesseract` "
+            "and the Tesseract binary (https://github.com/tesseract-ocr/tesseract).",
+            file=sys.stderr,
+        )
+        return []
+
+    try:
+        with Image.open(image_path) as img:
+            text = pytesseract.image_to_string(img)
+        return [line.strip() for line in text.splitlines() if line.strip()]
+    except pytesseract.TesseractNotFoundError:
+        print(
+            "Tesseract binary not found on PATH. Install it or set "
+            "pytesseract.pytesseract.tesseract_cmd to its location.",
+            file=sys.stderr,
+        )
+        return []
+    except Exception as e:
+        print(f"Error running Tesseract OCR: {e}", file=sys.stderr)
+        return []
+
+
+def run_ocr(image_path: Path) -> list[str]:
+    """Run OCR using the best engine for the current platform.
+
+    On Windows, the native WinRT engine is tried first (no extra install) and
+    Tesseract is the fallback if it yields nothing. On other platforms Tesseract
+    is used directly.
+    """
+    if platform.system() == "Windows":
+        lines = run_windows_ocr(image_path)
+        if lines:
+            return lines
+        print("Windows OCR returned no text — trying Tesseract fallback…", file=sys.stderr)
+        return run_tesseract_ocr(image_path)
+    return run_tesseract_ocr(image_path)
 
 
 def search_itunes(query: str, fetch: Optional[Callable[[str], str]] = None) -> Optional[dict]:
@@ -268,8 +320,8 @@ def main() -> None:
         print(f"Error: Screenshot file does not exist: {img_path}")
         sys.exit(1)
 
-    print(f"Running native Windows OCR on: {img_path}...")
-    lines = run_windows_ocr(img_path)
+    print(f"Running OCR on: {img_path}...")
+    lines = run_ocr(img_path)
     print(f"Extracted {len(lines)} raw text lines.")
 
     if not lines:

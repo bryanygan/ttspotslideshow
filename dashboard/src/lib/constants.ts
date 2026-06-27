@@ -3,7 +3,7 @@ export const WINDOWS = [3, 7, 14, 30, 90, 180, 365] as const;
 
 // Target sizes for the smart-selection presets. 4-up slides render best at
 // multiples of 4.
-export const COUNTS = [4, 8, 12, 16] as const;
+export const COUNTS = [12, 16, 20, 24] as const;
 
 // Quick hook-text suggestions for the TikTok cover slide.
 export const HOOK_PRESETS = [

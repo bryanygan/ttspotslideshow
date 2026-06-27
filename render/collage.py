@@ -1,10 +1,10 @@
-"""Composite four cards into a 1080x1920 edge-to-edge 2x2 slide."""
+"""Composite four cards into a 1080x1700 edge-to-edge 2x2 slide."""
 
 from PIL import Image
 
 from render.card import CARD_W, CARD_H
 
-SLIDE_W, SLIDE_H = 1080, 1920
+SLIDE_W, SLIDE_H = 1080, 1700
 
 
 def collage(cards: list[Image.Image], watermark: str = None) -> Image.Image:

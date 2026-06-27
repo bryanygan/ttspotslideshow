@@ -9,6 +9,10 @@ import {
   uploadOcrScreenshot,
   fetchRecapHistory,
   fetchRecapSlides,
+  parsePlaylist,
+  savePlaylist,
+  MissingCoverError,
+  UnconfirmedCoverError,
 } from "./api";
 import type { RecapHistoryEntry } from "./api";
 import { PRESETS } from "./presets";
@@ -91,6 +95,17 @@ export interface RecapState {
   addOcrTracksToSelection: () => void;
   clearOcrTracks: () => void;
 
+  // Playlist import / export
+  playlistTracks: Candidate[];
+  playlistLoading: boolean;
+  playlistError: string | null;
+  playlistSource: "spotify" | "lastfm" | null;
+  parsePlaylistLink: (url: string) => Promise<void>;
+  addPlaylistTracksToSelection: () => void;
+  clearPlaylistTracks: () => void;
+  saveSelectionToSpotify: (name: string) => Promise<string | null>;
+  playlistSaving: boolean;
+
   // Recap history
   recapHistory: RecapHistoryEntry[];
   recapHistoryLoading: boolean;
@@ -137,6 +152,12 @@ export function useRecap(): RecapState {
   const [ocrTracks, setOcrTracks] = useState<Candidate[]>([]);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
+
+  const [playlistTracks, setPlaylistTracks] = useState<Candidate[]>([]);
+  const [playlistLoading, setPlaylistLoading] = useState(false);
+  const [playlistError, setPlaylistError] = useState<string | null>(null);
+  const [playlistSource, setPlaylistSource] = useState<"spotify" | "lastfm" | null>(null);
+  const [playlistSaving, setPlaylistSaving] = useState(false);
 
   const [recapHistory, setRecapHistory] = useState<RecapHistoryEntry[]>([]);
   const [recapHistoryLoading, setRecapHistoryLoading] = useState(false);
@@ -280,7 +301,7 @@ export function useRecap(): RecapState {
     async (track: { artist: string; title: string; track_key: string }, url: string) => {
       setError(null);
       try {
-        await fetch(`${apiBase}/api/art-test/save`, {
+        const resp = await fetch(`${apiBase}/api/art-test/save`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -289,6 +310,10 @@ export function useRecap(): RecapState {
             album_art_url: url,
           }),
         });
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.error || `Failed to save cover art URL (${resp.status}).`);
+        }
         // Optimistically update candidates
         setCandidates((prev) =>
           prev.map((c) =>
@@ -335,11 +360,11 @@ export function useRecap(): RecapState {
       setSummary(result.summary);
       setSlideUrls(result.slides);
     } catch (err) {
-      if (err instanceof Error && err.name === "UnconfirmedCoverError") {
-        setUnconfirmedCovers((err as any).unconfirmedCovers);
+      if (err instanceof UnconfirmedCoverError) {
+        setUnconfirmedCovers(err.unconfirmedCovers);
         setError("Some tracks only have iTunes covers. Please confirm or replace them below.");
-      } else if (err instanceof Error && err.name === "MissingCoverError") {
-        setMissingCovers((err as any).missingCovers);
+      } else if (err instanceof MissingCoverError) {
+        setMissingCovers(err.missingCovers);
         setError("Some tracks are missing Spotify album covers. Please upload or link them below.");
       } else {
         setError(err instanceof Error ? err.message : "Failed to generate slideshow.");
@@ -459,6 +484,78 @@ export function useRecap(): RecapState {
     setOcrError(null);
   }, []);
 
+  const parsePlaylistLink = useCallback(
+    async (url: string) => {
+      setPlaylistLoading(true);
+      setPlaylistError(null);
+      try {
+        const result = await parsePlaylist(apiBase, url);
+        setPlaylistSource(result.source);
+        setPlaylistTracks(result.tracks);
+        if (result.tracks.length === 0) {
+          setPlaylistError("No tracks found in that playlist.");
+        }
+      } catch (err) {
+        setPlaylistTracks([]);
+        setPlaylistSource(null);
+        setPlaylistError(err instanceof Error ? err.message : "Failed to parse playlist.");
+      } finally {
+        setPlaylistLoading(false);
+      }
+    },
+    [apiBase],
+  );
+
+  const addPlaylistTracksToSelection = useCallback(() => {
+    setPlaylistTracks((prev) => {
+      const newKeys: string[] = [];
+      const newTracks: Candidate[] = [];
+      for (const t of prev) {
+        if (!selectedKeys.has(t.track_key)) {
+          newKeys.push(t.track_key);
+          newTracks.push(t);
+        }
+      }
+      // Merge playlist tracks into candidates so they're selectable & orderable.
+      setCandidates((cands) => {
+        const existingKeys = new Set(cands.map((c) => c.track_key));
+        const toAdd = newTracks.filter((t) => !existingKeys.has(t.track_key));
+        return [...cands, ...toAdd];
+      });
+      setSelectedKeys((prevSel) => {
+        const next = new Set(prevSel);
+        for (const k of newKeys) next.add(k);
+        return next;
+      });
+      setSelectedOrder((prevOrder) => [...prevOrder, ...newKeys]);
+      return [];
+    });
+  }, [selectedKeys]);
+
+  const clearPlaylistTracks = useCallback(() => {
+    setPlaylistTracks([]);
+    setPlaylistError(null);
+    setPlaylistSource(null);
+  }, []);
+
+  const saveSelectionToSpotify = useCallback(
+    async (name: string): Promise<string | null> => {
+      if (selectedTracks.length === 0) return null;
+      setPlaylistSaving(true);
+      setPlaylistError(null);
+      try {
+        const result = await savePlaylist(apiBase, selectedTracks, name.trim() || undefined);
+        return result.url;
+      } catch (err) {
+        setPlaylistError(err instanceof Error ? err.message : "Failed to save playlist.");
+        return null;
+      } finally {
+        setPlaylistSaving(false);
+      }
+    },
+    [apiBase, selectedTracks],
+  );
+
   const loadRecapHistory = useCallback(async () => {
     setRecapHistoryLoading(true);
     setRecapHistoryError(null);
@@ -546,6 +643,15 @@ export function useRecap(): RecapState {
     runOcr,
     addOcrTracksToSelection,
     clearOcrTracks,
+    playlistTracks,
+    playlistLoading,
+    playlistError,
+    playlistSource,
+    parsePlaylistLink,
+    addPlaylistTracksToSelection,
+    clearPlaylistTracks,
+    saveSelectionToSpotify,
+    playlistSaving,
     recapHistory,
     recapHistoryLoading,
     recapHistoryError,

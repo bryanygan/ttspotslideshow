@@ -74,6 +74,64 @@ def sync_playlist(conn, tracks: list[dict], playlist_id: str | None = None) -> s
         return None
 
 
+def save_tracks_to_playlist(
+    conn,
+    tracks: list[dict],
+    name: str | None = None,
+    playlist_id: str | None = None,
+) -> dict:
+    """Save *tracks* to a new or existing Spotify playlist.
+
+    Unlike ``sync_playlist`` (which mirrors a fixed rotation playlist and
+    swallows errors), this is the dashboard's explicit "save these picks"
+    action: it raises on failure so the UI can surface a real message.
+
+    - If ``playlist_id`` is given, the tracks are *appended* to it.
+    - Otherwise a new playlist named ``name`` (or PLAYLIST_NAME) is created and
+      the tracks are added to it.
+
+    Returns ``{"playlist_id": str, "url": str, "added": int}``.
+    """
+    from spotify_client import get_client
+
+    sp = get_client()
+
+    track_ids = [
+        t["track_id"]
+        for t in tracks
+        if t.get("track_id") and len(t["track_id"]) == 22 and t["track_id"].isalnum()
+    ]
+    if not track_ids:
+        raise ValueError(
+            "None of the selected tracks have a Spotify ID — can't save to a "
+            "Spotify playlist. (Last.fm-only tracks have no Spotify ID.)"
+        )
+    spotify_uris = [f"spotify:track:{tid}" for tid in track_ids]
+
+    if playlist_id is None:
+        user_id = sp.current_user()["id"]
+        pl = sp.user_playlist_create(
+            user_id,
+            name or PLAYLIST_NAME,
+            public=True,
+            description=PLAYLIST_DESCRIPTION,
+        )
+        playlist_id = pl["id"]
+        logger.info("save_tracks_to_playlist: created playlist '%s' (%s)",
+                    name or PLAYLIST_NAME, playlist_id)
+
+    # Spotify caps add-items at 100 URIs per call.
+    for i in range(0, len(spotify_uris), 100):
+        sp.playlist_add_items(playlist_id, spotify_uris[i:i + 100])
+
+    playlist = sp.playlist(playlist_id)
+    return {
+        "playlist_id": playlist_id,
+        "url": playlist.get("external_urls", {}).get("spotify"),
+        "added": len(track_ids),
+    }
+
+
 def _find_or_create_playlist(sp, name: str) -> str | None:
     """Return the ID of an existing playlist named *name*, or create one."""
     try:

@@ -37,7 +37,7 @@ export function Summary({ r }: { r: RecapState }) {
           <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
             Slides render 4-up. Add or remove tracks to reach a multiple of 4
-            (4, 8, 12, 16) so none go to waste.
+            (12, 16, 20, 24…) so none go to waste.
           </span>
         </div>
       )}

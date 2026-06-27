@@ -13,7 +13,53 @@ import db
 from slideshow.builder import build_recap_slideshow, ProgressEmitter
 
 
+class RateLimiter:
+    """Thread-safe per-IP token bucket.
+
+    Each IP gets a bucket of ``capacity`` tokens that refills at ``refill_rate``
+    tokens/second. One request costs one token; when a bucket is empty the
+    request is rejected. This is a lightweight guard against accidental hammering
+    or abuse when the server is exposed publicly (e.g. via a Cloudflare Tunnel)
+    without an auth layer in front of it.
+    """
+
+    def __init__(self, capacity: int = 60, refill_rate: float = 1.0):
+        self.capacity = capacity
+        self.refill_rate = refill_rate
+        self._buckets: dict[str, tuple[float, float]] = {}  # ip -> (tokens, last_ts)
+        self._lock = threading.Lock()
+
+    def allow(self, ip: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            tokens, last = self._buckets.get(ip, (self.capacity, now))
+            # Refill based on elapsed time, capped at capacity.
+            tokens = min(self.capacity, tokens + (now - last) * self.refill_rate)
+            if tokens < 1.0:
+                self._buckets[ip] = (tokens, now)
+                return False
+            self._buckets[ip] = (tokens - 1.0, now)
+            return True
+
+
+# Shared limiter instance. ~60 req burst, refilling 1/sec — generous for normal
+# dashboard use, but caps runaway/abusive clients.
+RATE_LIMITER = RateLimiter(capacity=60, refill_rate=1.0)
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
+
+    def _rate_limited(self) -> bool:
+        """Return True (and send a 429) if this client is over its rate budget."""
+        ip = self.client_address[0] if self.client_address else "unknown"
+        if RATE_LIMITER.allow(ip):
+            return False
+        self.send_response(429)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Retry-After", "1")
+        self.end_headers()
+        self.wfile.write(json.dumps({"error": "Rate limit exceeded. Slow down."}).encode("utf-8"))
+        return True
 
     def end_headers(self):
         # Inject CORS headers on every response
@@ -27,6 +73,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        if self._rate_limited():
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/api/candidates":
             self.handle_get_candidates(parsed)
@@ -42,6 +90,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_static_files(parsed)
 
     def do_POST(self):
+        if self._rate_limited():
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/api/generate":
             self.handle_post_generate()
@@ -53,6 +103,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_post_art_test_save()
         elif parsed.path == "/api/ocr":
             self.handle_post_ocr()
+        elif parsed.path == "/api/playlist/parse":
+            self.handle_post_playlist_parse()
+        elif parsed.path == "/api/playlist/save":
+            self.handle_post_playlist_save()
         else:
             self.send_error(404, "Not Found")
 
@@ -326,7 +380,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         try:
             while True:
-                msg_type, msg_data = q.get(timeout=120)
+                try:
+                    msg_type, msg_data = q.get(timeout=600)
+                except queue.Empty:
+                    final = {"event": "error", "type": "error",
+                             "message": "Generation timed out after 10 minutes."}
+                    self.wfile.write(f"data: {json.dumps(final)}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                    break
                 if msg_type == "progress":
                     event_data = f"data: {json.dumps(msg_data)}\n\n"
                     self.wfile.write(event_data.encode("utf-8"))
@@ -489,8 +550,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         # Run OCR
         try:
-            from slideshow.ocr import run_windows_ocr, parse_tracks_from_lines
-            lines = run_windows_ocr(temp_file)
+            from slideshow.ocr import run_ocr, parse_tracks_from_lines
+            lines = run_ocr(temp_file)
             if not lines:
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -513,6 +574,70 @@ class DashboardHandler(BaseHTTPRequestHandler):
         finally:
             if temp_file.exists():
                 temp_file.unlink(missing_ok=True)
+
+    def _send_json(self, status, payload):
+        """Write a JSON response with the given status code."""
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+    def _read_json_body(self):
+        """Read and parse a JSON request body, or return None on failure."""
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8") if content_length else ""
+        try:
+            return json.loads(body) if body else {}
+        except Exception:
+            return None
+
+    def handle_post_playlist_parse(self):
+        """Resolve a Spotify/Last.fm playlist link into selectable candidates."""
+        payload = self._read_json_body()
+        if payload is None:
+            self._send_json(400, {"error": "Invalid JSON payload"})
+            return
+
+        url = (payload.get("url") or "").strip()
+        if not url:
+            self._send_json(400, {"error": "Missing 'url' (playlist link or ID)"})
+            return
+
+        try:
+            from slideshow.playlist_parse import parse_playlist, PlaylistParseError
+            with db.connect() as conn:
+                result = parse_playlist(url, conn=conn, lastfm_api_key=config.LASTFM_API_KEY)
+            self._send_json(200, result)
+        except PlaylistParseError as e:
+            self._send_json(400, {"error": str(e)})
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
+
+    def handle_post_playlist_save(self):
+        """Save selected tracks back to a new or existing Spotify playlist."""
+        payload = self._read_json_body()
+        if payload is None:
+            self._send_json(400, {"error": "Invalid JSON payload"})
+            return
+
+        tracks = payload.get("tracks", [])
+        name = payload.get("name")
+        playlist_id = payload.get("playlist_id")
+        if not tracks:
+            self._send_json(400, {"error": "No tracks provided to save."})
+            return
+
+        try:
+            from slideshow.playlist_sync import save_tracks_to_playlist
+            with db.connect() as conn:
+                result = save_tracks_to_playlist(
+                    conn, tracks, name=name, playlist_id=playlist_id
+                )
+            self._send_json(200, {"status": "success", **result})
+        except ValueError as e:
+            self._send_json(400, {"error": str(e)})
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
 
     def handle_static_files(self, parsed):
         dist_dir = Path("dashboard") / "dist"
@@ -633,9 +758,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Missing artist or title"}).encode("utf-8"))
             return
 
+        if not album_art_url:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Missing album_art_url"}).encode("utf-8"))
+            return
+
         try:
             with db.connect() as conn:
-                db.update_track_art(conn, artist, title, album_art_url or "")
+                db.update_track_art(conn, artist, title, album_art_url)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
