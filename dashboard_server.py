@@ -107,6 +107,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_post_playlist_parse()
         elif parsed.path == "/api/playlist/save":
             self.handle_post_playlist_save()
+        elif parsed.path == "/api/search/spotify":
+            self.handle_post_spotify_search()
         else:
             self.send_error(404, "Not Found")
 
@@ -622,6 +624,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
             with db.connect() as conn:
                 result = parse_playlist(url, conn=conn, lastfm_api_key=config.LASTFM_API_KEY)
             self._send_json(200, result)
+        except PlaylistParseError as e:
+            self._send_json(400, {"error": str(e)})
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
+
+    def handle_post_spotify_search(self):
+        """Search Spotify for tracks matching a query string."""
+        payload = self._read_json_body()
+        if payload is None:
+            self._send_json(400, {"error": "Invalid JSON payload"})
+            return
+
+        q = (payload.get("q") or "").strip()
+        if not q:
+            self._send_json(400, {"error": "Missing 'q' (search query)"})
+            return
+
+        try:
+            from slideshow.playlist_parse import search_spotify_tracks, PlaylistParseError
+            with db.connect() as conn:
+                tracks = search_spotify_tracks(q, conn=conn)
+            self._send_json(200, {"tracks": tracks})
         except PlaylistParseError as e:
             self._send_json(400, {"error": str(e)})
         except Exception as e:
