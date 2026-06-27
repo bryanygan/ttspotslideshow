@@ -27,7 +27,8 @@ REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback
 # next get_client() call will trigger a one-time browser re-authorization.
 SCOPES = (
     "user-read-recently-played user-top-read "
-    "playlist-modify-public playlist-modify-private"
+    "playlist-modify-public playlist-modify-private "
+    "playlist-read-private playlist-read-collaborative"
 )
 
 # --- Last.fm credentials ---

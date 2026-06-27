@@ -82,52 +82,114 @@ def _extract_spotify_playlist_id(text: str) -> Optional[str]:
 
 
 def parse_spotify_playlist(playlist_id: str, conn=None) -> list[dict]:
-    """Resolve all tracks in a Spotify playlist into candidate dicts."""
+    """Resolve all tracks in a Spotify playlist into candidate dicts.
+
+    Tries public Embed Widget scraping first to support algorithmic/personalized
+    mixes and bypass new API restrictions, and falls back to the official Spotify
+    Web API /items endpoint for private playlists owned/followed by the user.
+    """
+    import urllib.request
+    import re
+    import json
+    import ssl
     from spotify_client import get_client
 
-    sp = get_client()
     candidates: list[dict] = []
-    offset = 0
-    page_size = 100
-    while True:
-        try:
-            page = sp.playlist_items(
-                playlist_id,
-                offset=offset,
-                limit=page_size,
-                additional_types=("track",),
-            )
-        except Exception as exc:
-            raise PlaylistParseError(f"Failed to fetch Spotify playlist: {exc}") from exc
+    scrape_success = False
 
-        items = page.get("items", [])
-        if not items:
-            break
+    # 1. Try public Embed Widget scraping (bypasses OAuth restrictions, works on mixes)
+    try:
+        embed_url = f"https://open.spotify.com/embed/playlist/{playlist_id}"
+        req = urllib.request.Request(
+            embed_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+        )
+        context = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, context=context) as response:
+            html = response.read().decode("utf-8")
 
-        for item in items:
-            track = item.get("track") or {}
-            # Skip local files / podcast episodes / unavailable rows.
-            if not track or track.get("type") != "track":
-                continue
-            name = track.get("name") or ""
-            artists = track.get("artists") or []
-            artist = ", ".join(a.get("name", "") for a in artists).strip(", ")
-            if not name or not artist:
-                continue
-            images = (track.get("album") or {}).get("images") or []
-            art_url = images[0].get("url") if images else ""
-            candidates.append(_candidate(
-                conn,
-                track_id=track.get("id") or "",
-                title=name,
-                artist=artist,
-                album_art_url=art_url,
-            ))
+        pattern = r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>'
+        script_m = re.search(pattern, html, re.DOTALL)
+        if not script_m:
+            scripts = re.findall(r'<script[^>]*>(.*?)</script>', html, re.DOTALL)
+            for s in scripts:
+                if s.strip().startswith('{"props"'):
+                    script_m = re.match(r'^(.*)$', s.strip())
+                    break
 
-        if page.get("next"):
-            offset += page_size
-        else:
-            break
+        if script_m:
+            data = json.loads(script_m.group(1).strip())
+            entity = data["props"]["pageProps"]["state"]["data"]["entity"]
+            track_list = entity.get("trackList", [])
+            if track_list:
+                for item in track_list:
+                    uri = item.get("uri") or ""
+                    track_id = uri.split(":")[-1] if uri.startswith("spotify:track:") else ""
+                    name = item.get("title") or ""
+                    artist = item.get("subtitle") or ""
+                    if not track_id or not name or not artist:
+                        continue
+                    candidates.append(_candidate(
+                        conn,
+                        track_id=track_id,
+                        title=name,
+                        artist=artist,
+                        album_art_url="",  # resolved during generation to avoid API 429s
+                    ))
+                scrape_success = True
+    except Exception:
+        # Silently fall back to official API if scrape fails
+        pass
+
+    # 2. Fallback to official Spotify API using the correct /items endpoint
+    if not scrape_success:
+        sp = get_client()
+        offset = 0
+        page_size = 100
+        while True:
+            try:
+                # Direct _get to bypass spotipy's deprecated /tracks URL
+                plid = sp._get_id("playlist", playlist_id)
+                page = sp._get(
+                    f"playlists/{plid}/items",
+                    limit=page_size,
+                    offset=offset,
+                    additional_types="track",
+                )
+            except Exception as exc:
+                raise PlaylistParseError(f"Failed to fetch Spotify playlist: {exc}") from exc
+
+            items = page.get("items", [])
+            if not items:
+                break
+
+            for item in items:
+                track = item.get("track") or {}
+                # Skip local files / podcast episodes / unavailable rows.
+                if not track or track.get("type") != "track":
+                    continue
+                name = track.get("name") or ""
+                artists = track.get("artists") or []
+                artist = ", ".join(a.get("name", "") for a in artists).strip(", ")
+                if not name or not artist:
+                    continue
+                images = (track.get("album") or {}).get("images") or []
+                art_url = images[0].get("url") if images else ""
+                candidates.append(_candidate(
+                    conn,
+                    track_id=track.get("id") or "",
+                    title=name,
+                    artist=artist,
+                    album_art_url=art_url,
+                ))
+
+            if page.get("next"):
+                offset += page_size
+            else:
+                break
 
     return _dedupe(candidates)
 
