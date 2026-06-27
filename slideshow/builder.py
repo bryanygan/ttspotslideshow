@@ -267,13 +267,11 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
     all_paths = local_paths + downloaded_paths
     deduped = _dedupe_paths_by_content(all_paths)
     return deduped[:cap]
-
-
 def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
                      overrides_dir=None, cover_title=None, cover_subtitle=None,
                      cover_theme=None, watermark=None, cover_pool=None,
                      progress=None, allow_itunes_covers=False, layout="2x2",
-                     cover_only=False, cover_columns=5, width=None, height=None):
+                     cover_only=False, cover_columns=5, cover_rows=9, width=None, height=None):
     """Resolve art, render cards, write 4-up slides, and record featured tracks.
 
     Returns (slide_count, genre_spread). Shared by build_slideshow and
@@ -298,6 +296,7 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
         cover = render_cover_collage(
             art_paths_collage, cover_title or "", cover_subtitle or "",
             theme=cover_theme, footer_text=watermark, columns=cover_columns,
+            rows=cover_rows,
             width=cover_w, height=cover_h
         )
         cover.save(out_dir / "slide_1.png")
@@ -410,6 +409,7 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
         cover = render_cover_collage(
             art_paths_collage, cover_title, cover_subtitle or "",
             theme=cover_theme, footer_text=watermark, columns=cover_columns,
+            rows=cover_rows,
             width=cover_w, height=cover_h
         )
         slide_count += 1
@@ -492,7 +492,7 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
                           recap_id=None, cover_pool=None, playlist_id=None,
                           export_video=False, progress=None,
                           allow_itunes_covers=False, layout="2x2",
-                          cover_only=False, cover_columns=5,
+                          cover_only=False, cover_columns=5, cover_rows=9,
                           width=None, height=None) -> dict:
     """Build slides for specific selected tracks. Returns a run summary."""
     run_date = today or date.today().isoformat()
@@ -530,7 +530,7 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
         cover_title=cover_title, cover_subtitle=cover_subtitle,
         cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool,
         progress=progress, allow_itunes_covers=allow_itunes_covers, layout=layout,
-        cover_only=cover_only, cover_columns=cover_columns,
+        cover_only=cover_only, cover_columns=cover_columns, cover_rows=cover_rows,
         width=width, height=height
     )
     summary["slide_count"] = slide_count

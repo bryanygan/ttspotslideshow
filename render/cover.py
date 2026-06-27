@@ -7,6 +7,7 @@ is available.
 """
 
 from pathlib import Path
+from typing import Optional
 
 from PIL import Image, ImageDraw
 
@@ -32,26 +33,38 @@ def _theme_colors(theme):
     return THEMES.get((theme or "purple").lower(), THEMES["purple"])
 
 
-def _square_crop(img: Image.Image, size: int) -> Image.Image:
-    """Center-crop to a square and resize to `size`."""
-    img = img.convert("RGB")
-    w, h = img.size
-    m = min(w, h)
-    left = (w - m) // 2
-    top = (h - m) // 2
-    img = img.crop((left, top, left + m, top + m))
-    return img.resize((size, size), Image.Resampling.LANCZOS)
+def _load_cell(path: Path, target_w: int, target_h: int) -> Optional[Image.Image]:
+    """Load image, crop to target cell aspect ratio, and resize to target cell dimensions."""
+    try:
+        with Image.open(path) as img:
+            img = img.convert("RGB")
+            w, h = img.size
+            img_aspect = w / h
+            target_aspect = target_w / target_h
+            if img_aspect > target_aspect:
+                # Image is wider than target aspect ratio: crop sides
+                new_w = int(h * target_aspect)
+                left = (w - new_w) // 2
+                img = img.crop((left, 0, left + new_w, h))
+            else:
+                # Image is taller than target aspect ratio: crop top/bottom
+                new_h = int(w / target_aspect)
+                top = (h - new_h) // 2
+                img = img.crop((0, top, w, top + new_h))
+            return img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+    except Exception:
+        return None
 
 
-def _build_mosaic(art_paths, columns: int, width: int = 1080, height: int = 1920) -> Image.Image:
+def _build_mosaic(art_paths, columns: int, rows: int, width: int = 1080, height: int = 1920) -> Image.Image:
     """Tile album covers into a full-bleed mosaic.
 
-    Loads each path, skips any that fail to open, and cycles through the valid
-    images if there aren't enough to fill every tile.
+    Loads each path, center-crops to the tile's aspect ratio, and cycles through
+    the valid images if there aren't enough to fill every tile.
     """
     canvas = Image.new("RGB", (width, height), (10, 10, 15))
-    tile = width // columns
-    rows = (height + tile - 1) // tile
+    w_cell = width // columns
+    h_cell = height // rows
     needed = columns * rows
 
     tiles: list[Image.Image] = []
@@ -62,20 +75,20 @@ def _build_mosaic(art_paths, columns: int, width: int = 1080, height: int = 1920
         path = art_paths[i % len(art_paths)]
         i += 1
         attempts += 1
-        try:
-            with Image.open(path) as im:
-                tiles.append(_square_crop(im, tile))
-        except Exception:
-            continue
+        tile = _load_cell(path, w_cell, h_cell)
+        if tile:
+            tiles.append(tile)
 
     if not tiles:
         return canvas
 
-    idx = 0
+    from itertools import cycle
+    tile_cycle = cycle(tiles)
+
     for r in range(rows):
         for c in range(columns):
-            canvas.paste(tiles[idx % len(tiles)], (c * tile, r * tile))
-            idx += 1
+            tile = next(tile_cycle)
+            canvas.paste(tile, (c * w_cell, r * h_cell))
     return canvas
 
 
@@ -101,6 +114,7 @@ def render_cover_collage(
     theme: str = "purple",
     footer_text: str = None,
     columns: int = 5,
+    rows: int = 9,
     width: int = 1080,
     height: int = 1920,
 ) -> Image.Image:
@@ -110,12 +124,13 @@ def render_cover_collage(
     Falls back to a gradient cover when no usable art is supplied.
     """
     art_paths = [p for p in (art_paths or []) if p]
-    columns = max(2, min(10, int(columns)))
+    columns = max(2, min(16, int(columns)))
+    rows = max(2, min(25, int(rows)))
     if not art_paths:
         return render_cover_slide(title, subtitle, theme=theme, footer_text=footer_text, width=width, height=height)
 
     # Mosaic background. Apply theme tint scrim if selected.
-    mosaic = _build_mosaic(art_paths, columns, width, height).convert("RGBA")
+    mosaic = _build_mosaic(art_paths, columns, rows, width, height).convert("RGBA")
     if theme and theme.lower() != "none":
         top_color, bottom_color = _theme_colors(theme)
         tint = vertical_gradient((width, height), top_color, bottom_color).convert("RGBA")

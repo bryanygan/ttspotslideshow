@@ -92,6 +92,8 @@ export interface RecapState {
   setCoverOnly: (v: boolean) => void;
   coverColumns: number;
   setCoverColumns: (v: number) => void;
+  coverRows: number;
+  setCoverRows: (v: number) => void;
   slideWidth: number;
   setSlideWidth: (w: number) => void;
   slideHeight: number;
@@ -200,6 +202,7 @@ export function useRecap(): RecapState {
   const [watermark, setWatermark] = useState("");
   const [coverOnly, setCoverOnly] = useState(false);
   const [coverColumns, setCoverColumns] = useState(5);
+  const [coverRows, setCoverRows] = useState(9);
   const [slideWidth, setSlideWidthRaw] = useState(1080);
   const [slideHeight, setSlideHeightRaw] = useState(1700);
   const [lockAspectRatio, setLockAspectRatio] = useState(true);
@@ -467,6 +470,7 @@ export function useRecap(): RecapState {
         layout,
         cover_only: coverOnly,
         cover_columns: coverColumns,
+        cover_rows: coverRows,
         width: slideWidth,
         height: slideHeight,
       }, (evt) => {
@@ -824,6 +828,8 @@ export function useRecap(): RecapState {
     setCoverOnly,
     coverColumns,
     setCoverColumns,
+    coverRows,
+    setCoverRows,
     slideWidth,
     setSlideWidth,
     slideHeight,

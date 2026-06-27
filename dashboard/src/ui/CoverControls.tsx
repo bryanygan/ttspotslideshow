@@ -125,28 +125,47 @@ export function CoverControls({ r }: { r: RecapState }) {
             </div>
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-4">
             <div className="flex items-baseline justify-between">
-              <span className={labelClass}>Cover Grid Size</span>
+              <span className={labelClass}>Cover Grid Layout</span>
               <span className="font-mono text-xs text-zinc-300">
-                {r.coverColumns} × {Math.ceil(r.coverColumns * (r.slideHeight / r.slideWidth))}
+                {r.coverColumns} × {r.coverRows}
                 <span className="text-zinc-500">
-                  {" "}— {r.coverColumns * Math.ceil(r.coverColumns * (r.slideHeight / r.slideWidth))} covers
+                  {" "}— {r.coverColumns * r.coverRows} covers
                 </span>
               </span>
             </div>
-            <input
-              type="range"
-              min={3}
-              max={8}
-              step={1}
-              value={r.coverColumns}
-              onChange={(e) => r.setCoverColumns(parseInt(e.target.value))}
-              className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
-            />
-            <div className="flex justify-between text-[10px] text-zinc-600">
-              <span>3 (large)</span>
-              <span>8 (dense)</span>
+
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-zinc-400">Columns</span>
+                <span className="font-mono text-zinc-200">{r.coverColumns}</span>
+              </div>
+              <input
+                type="range"
+                min={3}
+                max={12}
+                step={1}
+                value={r.coverColumns}
+                onChange={(e) => r.setCoverColumns(parseInt(e.target.value))}
+                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-zinc-400">Rows</span>
+                <span className="font-mono text-zinc-200">{r.coverRows}</span>
+              </div>
+              <input
+                type="range"
+                min={3}
+                max={15}
+                step={1}
+                value={r.coverRows}
+                onChange={(e) => r.setCoverRows(parseInt(e.target.value))}
+                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+              />
             </div>
           </div>
         </div>

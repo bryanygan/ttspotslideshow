@@ -183,6 +183,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             layout = payload.get("layout", "2x2")
             cover_only = payload.get("cover_only", False)
             cover_columns = int(payload.get("cover_columns", 5))
+            cover_rows = int(payload.get("cover_rows", 9))
             width = int(payload.get("width", 1080))
             height = int(payload.get("height", 1700))
         except Exception as e:
@@ -217,6 +218,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     cover_pool=cover_pool, playlist_id=playlist_id,
                     export_video=export_video, layout=layout,
                     cover_only=cover_only, cover_columns=cover_columns,
+                    cover_rows=cover_rows,
                     width=width, height=height
                 )
         except Exception as e:
@@ -286,6 +288,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             layout = payload.get("layout", "2x2")
             cover_only = payload.get("cover_only", False)
             cover_columns = int(payload.get("cover_columns", 5))
+            cover_rows = int(payload.get("cover_rows", 9))
             width = int(payload.get("width", 1080))
             height = int(payload.get("height", 1700))
         except Exception as e:
@@ -327,6 +330,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         export_video=export_video,
                         progress=emitter, layout=layout,
                         cover_only=cover_only, cover_columns=cover_columns,
+                        cover_rows=cover_rows,
                         width=width, height=height
                     )
                 recap_id = Path(summary["out_dir"]).name
