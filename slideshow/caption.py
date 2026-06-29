@@ -1,7 +1,7 @@
 """Smart caption and hashtag generator for TikTok slideshows."""
 
 import re
-from collections import Counter
+
 
 _MUSIC_EMOJIS = ["\U0001f3a7", "\U0001f3b5", "\U0001f3b6", "\U0001f3a4", "\U0001f3b9"]  # 🎧🎵🎶🎤🎹
 
@@ -35,7 +35,11 @@ def get_suggested_hashtags(tracks: list[dict], max_tags: int = 5) -> list[str]:
         return _FILLER_TAGS[:max_tags]
 
     # Count frequency and sort descending
-    genre_counts = Counter(genres).most_common()
+    counts = {}
+    for g in genres:
+        counts[g] = counts.get(g, 0) + 1
+    genre_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+
     hashtags = []
     for genre, _count in genre_counts:
         if len(hashtags) >= max_tags:

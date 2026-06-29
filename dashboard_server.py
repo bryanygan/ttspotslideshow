@@ -3,14 +3,13 @@ import sys
 import time
 import threading
 import queue
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 from render.art import find_override_art
 
 import config
 import db
-from slideshow.builder import build_recap_slideshow, ProgressEmitter
 
 
 class RateLimiter:
@@ -47,7 +46,18 @@ class RateLimiter:
 RATE_LIMITER = RateLimiter(capacity=60, refill_rate=1.0)
 
 
-class DashboardHandler(BaseHTTPRequestHandler):
+_cached_handler_cls = None
+
+
+def DashboardHandler(request, client_address, server):
+    global _cached_handler_cls
+    if _cached_handler_cls is None:
+        dct = {k: v for k, v in DashboardHandlerHelper.__dict__.items() if not k.startswith('__')}
+        _cached_handler_cls = type('DashboardHandler', (BaseHTTPRequestHandler,), dct)
+    _cached_handler_cls(request, client_address, server)
+
+
+class DashboardHandlerHelper:
 
     def _rate_limited(self) -> bool:
         """Return True (and send a 429) if this client is over its rate budget."""
@@ -66,7 +76,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Artist, X-Title")
-        super().end_headers()
+        BaseHTTPRequestHandler.end_headers(self)
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -208,6 +218,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             )
             return
 
+        from slideshow.builder import build_recap_slideshow
         try:
             with db.connect() as conn:
                 out_root = Path("output") / "slides"
@@ -309,6 +320,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             )
             return
 
+        from slideshow.builder import build_recap_slideshow, ProgressEmitter
         # Set up SSE response
         q = queue.Queue()
         result_holder = {"summary": None, "slides": None, "error": None}
@@ -893,7 +905,7 @@ def main():
     auto_git_pull()
     port = 8000
     server_address = ("", port)
-    httpd = ThreadingHTTPServer(server_address, DashboardHandler)
+    httpd = HTTPServer(server_address, DashboardHandler)
     print(
         f"Starting Weekly Recap Dashboard Server on http://localhost:{port}/..."
     )
