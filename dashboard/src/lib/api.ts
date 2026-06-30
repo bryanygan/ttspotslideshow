@@ -5,7 +5,10 @@ import type { Candidate, GenerateSummary } from "./types";
 export function resolveArt(apiBase: string, url: string): string {
   if (!url) return "";
   if (url.includes("mzstatic.com")) {
-    return `${apiBase}/api/art-proxy?url=${encodeURIComponent(btoa(url))}`;
+    const encoded = btoa(url);
+    const proxied = `${apiBase}/api/art-proxy?url=${encodeURIComponent(encoded)}`;
+    console.log(`[resolveArt] Proxying iTunes URL: "${url}" -> "${proxied}"`);
+    return proxied;
   }
   return url.startsWith("http") ? url : `${apiBase}${url}`;
 }
@@ -197,17 +200,28 @@ export async function saveItunesUrl(
   track: { artist: string; title: string },
   itunesUrl: string,
 ): Promise<void> {
-  const resp = await fetch(`${apiBase}/api/track/confirm`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      artist: track.artist,
-      title: track.title,
-      album_art_url: btoa(itunesUrl),
-      is_encoded: true
-    }),
-  });
-  if (!resp.ok) throw new Error(`Failed to save artwork URL (${resp.statusText}).`);
+  const encodedUrl = btoa(itunesUrl);
+  console.log(`[saveItunesUrl] Submitting confirm request for: "${track.artist} - ${track.title}". Original URL: "${itunesUrl}". Encoded: "${encodedUrl}"`);
+  try {
+    const resp = await fetch(`${apiBase}/api/track/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        artist: track.artist,
+        title: track.title,
+        album_art_url: encodedUrl,
+        is_encoded: true
+      }),
+    });
+    if (!resp.ok) {
+      console.error(`[saveItunesUrl] Request failed with HTTP status ${resp.status}`);
+      throw new Error(`Failed to save artwork URL (${resp.statusText}).`);
+    }
+    console.log(`[saveItunesUrl] Success for "${track.artist} - ${track.title}"`);
+  } catch (err) {
+    console.error(`[saveItunesUrl] Fetch error:`, err);
+    throw err;
+  }
 }
 
 export async function uploadOcrScreenshot(

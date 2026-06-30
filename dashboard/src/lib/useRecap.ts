@@ -499,6 +499,8 @@ export function useRecap(): RecapState {
   const saveArtLinkFor = useCallback(
     async (track: { artist: string; title: string; track_key: string }, url: string) => {
       setError(null);
+      const encodedUrl = btoa(url);
+      console.log(`[saveArtLinkFor] Submitting manual art link for: "${track.artist} - ${track.title}". URL: "${url}". Encoded: "${encodedUrl}"`);
       try {
         const resp = await fetch(`${apiBase}/api/track/confirm`, {
           method: "POST",
@@ -506,14 +508,16 @@ export function useRecap(): RecapState {
           body: JSON.stringify({
             artist: track.artist,
             title: track.title,
-            album_art_url: btoa(url),
+            album_art_url: encodedUrl,
             is_encoded: true,
           }),
         });
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));
+          console.error(`[saveArtLinkFor] Server returned status ${resp.status}:`, errData);
           throw new Error(errData.error || `Failed to save cover art URL (${resp.status}).`);
         }
+        console.log(`[saveArtLinkFor] Success updating "${track.artist} - ${track.title}"`);
         // Optimistically update candidates
         setCandidates((prev) =>
           prev.map((c) =>

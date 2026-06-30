@@ -79,6 +79,7 @@ class DashboardHandlerHelper:
         BaseHTTPRequestHandler.end_headers(self)
 
     def do_OPTIONS(self):
+        print(f"[CORS OPTIONS] Preflight request received for path: {self.path}", flush=True)
         self.send_response(200)
         self.end_headers()
 
@@ -765,12 +766,15 @@ class DashboardHandlerHelper:
     def handle_post_art_test_save(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length).decode("utf-8")
+        print(f"[TRACK CONFIRM] Save request received: path={self.path}, body_len={content_length}", flush=True)
         try:
             payload = json.loads(body)
             artist = payload.get("artist")
             title = payload.get("title")
             album_art_url = payload.get("album_art_url")
+            print(f"[TRACK CONFIRM] Payload: artist='{artist}', title='{title}', encoded_url='{album_art_url}'", flush=True)
         except Exception as e:
+            print(f"[TRACK CONFIRM] [ERROR] Failed to parse JSON body: {e}", flush=True)
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -778,6 +782,7 @@ class DashboardHandlerHelper:
             return
 
         if not artist or not title:
+            print(f"[TRACK CONFIRM] [ERROR] Missing artist or title", flush=True)
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -785,6 +790,7 @@ class DashboardHandlerHelper:
             return
 
         if not album_art_url:
+            print(f"[TRACK CONFIRM] [ERROR] Missing album_art_url", flush=True)
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -792,22 +798,29 @@ class DashboardHandlerHelper:
             return
 
         # Handle base64 decoded URLs to bypass adblockers
-        if payload.get("is_encoded") or (album_art_url and not album_art_url.startswith("http")):
+        is_encoded = payload.get("is_encoded") or (album_art_url and not album_art_url.startswith("http"))
+        if is_encoded:
             import base64
             try:
                 padded = album_art_url + "=" * ((4 - len(album_art_url) % 4) % 4)
-                album_art_url = base64.b64decode(padded).decode("utf-8")
-            except Exception:
+                decoded_url = base64.b64decode(padded).decode("utf-8")
+                print(f"[TRACK CONFIRM] Decoded base64 URL: '{decoded_url}'", flush=True)
+                album_art_url = decoded_url
+            except Exception as decode_err:
+                print(f"[TRACK CONFIRM] [ERROR] Failed to decode base64: {decode_err}", flush=True)
                 pass
 
         try:
+            print(f"[TRACK CONFIRM] Updating db table 'plays': '{artist}' - '{title}' -> '{album_art_url}'", flush=True)
             with db.connect() as conn:
                 db.update_track_art(conn, artist, title, album_art_url)
+            print(f"[TRACK CONFIRM] [SUCCESS] DB update completed successfully", flush=True)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "success"}).encode("utf-8"))
         except Exception as e:
+            print(f"[TRACK CONFIRM] [ERROR] DB update failed: {e}", flush=True)
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -818,14 +831,18 @@ class DashboardHandlerHelper:
         import urllib.request
         query = parse_qs(parsed.query)
         encoded_url = query.get("url", [""])[0]
+        print(f"[ART PROXY] Request received: url_len={len(encoded_url)}", flush=True)
         if not encoded_url:
+            print(f"[ART PROXY] [ERROR] Missing url query param", flush=True)
             self.send_error(400, "Missing url parameter")
             return
         try:
             padded = encoded_url + "=" * ((4 - len(encoded_url) % 4) % 4)
             url = base64.b64decode(padded).decode("utf-8")
+            print(f"[ART PROXY] Decoded target URL: '{url}'", flush=True)
             
             # Fetch the image from iTunes
+            print(f"[ART PROXY] Proxying request to Apple CDN...", flush=True)
             req = urllib.request.Request(
                 url,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -833,13 +850,16 @@ class DashboardHandlerHelper:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 content_type = resp.headers.get("Content-Type", "image/jpeg")
                 data = resp.read()
+                print(f"[ART PROXY] Downloaded successfully: Content-Type='{content_type}', bytes={len(data)}", flush=True)
                 
             self.send_response(200)
             self.send_header("Content-Type", content_type)
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(data)
+            print(f"[ART PROXY] [SUCCESS] Proxied image returned to client", flush=True)
         except Exception as e:
+            print(f"[ART PROXY] [ERROR] Proxy fetch failed: {e}", flush=True)
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
