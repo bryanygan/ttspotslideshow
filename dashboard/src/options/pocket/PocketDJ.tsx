@@ -614,6 +614,7 @@ function CreateTab({ r }: { r: RecapState }) {
               <ItunesConfirmRow
                 key={track.track_key}
                 track={track}
+                apiBase={r.apiBase}
                 onConfirm={(accept) => r.confirmItunesCover(track, accept)}
               />
             ))}
@@ -924,9 +925,11 @@ function TabBar({
 
 function ItunesConfirmRow({
   track,
+  apiBase,
   onConfirm,
 }: {
   track: { artist: string; title: string; track_key: string; itunes_url: string };
+  apiBase: string;
   onConfirm: (accept: boolean) => void;
 }) {
   const [denied, setDenied] = useState(false);
@@ -937,7 +940,7 @@ function ItunesConfirmRow({
         {/* iTunes cover preview */}
         <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-800 shadow">
           <img
-            src={track.itunes_url}
+            src={resolveArt(apiBase, track.itunes_url)}
             alt=""
             className="h-full w-full object-cover"
             onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}

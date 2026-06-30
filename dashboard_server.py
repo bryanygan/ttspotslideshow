@@ -96,6 +96,8 @@ class DashboardHandlerHelper:
             self.handle_get_recap_history()
         elif parsed.path.startswith("/api/recap-history/"):
             self.handle_get_recap_slides(parsed)
+        elif parsed.path == "/api/art-proxy":
+            self.handle_get_art_proxy(parsed)
         else:
             self.handle_static_files(parsed)
 
@@ -789,6 +791,15 @@ class DashboardHandlerHelper:
             self.wfile.write(json.dumps({"error": "Missing album_art_url"}).encode("utf-8"))
             return
 
+        # Handle base64 decoded URLs to bypass adblockers
+        if payload.get("is_encoded") or (album_art_url and not album_art_url.startswith("http")):
+            import base64
+            try:
+                padded = album_art_url + "=" * ((4 - len(album_art_url) % 4) % 4)
+                album_art_url = base64.b64decode(padded).decode("utf-8")
+            except Exception:
+                pass
+
         try:
             with db.connect() as conn:
                 db.update_track_art(conn, artist, title, album_art_url)
@@ -801,6 +812,38 @@ class DashboardHandlerHelper:
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+
+    def handle_get_art_proxy(self, parsed):
+        import base64
+        import urllib.request
+        query = parse_qs(parsed.query)
+        encoded_url = query.get("url", [""])[0]
+        if not encoded_url:
+            self.send_error(400, "Missing url parameter")
+            return
+        try:
+            padded = encoded_url + "=" * ((4 - len(encoded_url) % 4) % 4)
+            url = base64.b64decode(padded).decode("utf-8")
+            
+            # Fetch the image from iTunes
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                content_type = resp.headers.get("Content-Type", "image/jpeg")
+                data = resp.read()
+                
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(data)
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": f"Proxy failed: {e}"}).encode("utf-8"))
 
     def handle_get_recap_history(self):
         """List all past recap directories in output/slides/ that start with 'recap-'."""

@@ -47,13 +47,13 @@ def test_fallback_to_itunes_when_spotify_unavailable(monkeypatch):
 
     track = _track(art="https://lastfm/300.jpg")
     out = resolve_art_url(track, fetch=fetch_mock)
-    # Should upgrade 100x100 to 1000x1000
-    assert "1000x1000" in out
+    # Should upgrade 100x100 to 600x600
+    assert "600x600" in out
     assert _is_itunes_url(out)
 
 
 def test_is_itunes_url():
-    assert _is_itunes_url("https://is1-ssl.mzstatic.com/image/thumb/Music/1000x1000bb.jpg")
+    assert _is_itunes_url("https://is1-ssl.mzstatic.com/image/thumb/Music/600x600bb.jpg")
     assert not _is_itunes_url("https://i.scdn.co/image/abc")
     assert not _is_itunes_url("")
 

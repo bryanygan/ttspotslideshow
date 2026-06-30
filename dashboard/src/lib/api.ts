@@ -4,6 +4,9 @@ import type { Candidate, GenerateSummary } from "./types";
 // Spotify URLs are absolute (http...); override URLs are server-relative.
 export function resolveArt(apiBase: string, url: string): string {
   if (!url) return "";
+  if (url.includes("mzstatic.com")) {
+    return `${apiBase}/api/art-proxy?url=${encodeURIComponent(btoa(url))}`;
+  }
   return url.startsWith("http") ? url : `${apiBase}${url}`;
 }
 
@@ -197,7 +200,12 @@ export async function saveItunesUrl(
   const resp = await fetch(`${apiBase}/api/art-test/save`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ artist: track.artist, title: track.title, album_art_url: itunesUrl }),
+    body: JSON.stringify({
+      artist: track.artist,
+      title: track.title,
+      album_art_url: btoa(itunesUrl),
+      is_encoded: true
+    }),
   });
   if (!resp.ok) throw new Error(`Failed to save artwork URL (${resp.statusText}).`);
 }

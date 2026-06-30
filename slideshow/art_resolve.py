@@ -121,8 +121,8 @@ def resolve_art_url(track, fetch: Optional[Callable[[str], str]] = None,
     if results:
         artwork = results[0].get("artworkUrl100", "")
         if artwork:
-            # Upgrade iTunes thumbnail to 1000x1000 for higher quality
-            result = artwork.replace("100x100", "1000x1000")
+            # Upgrade iTunes thumbnail to 600x600 for higher quality and reliability
+            result = artwork.replace("100x100", "600x600")
 
     if cache is not None:
         cache[key] = result
