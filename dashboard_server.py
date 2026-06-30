@@ -111,7 +111,7 @@ class DashboardHandlerHelper:
             self.handle_post_generate_stream()
         elif parsed.path == "/api/overrides/upload":
             self.handle_post_override_upload()
-        elif parsed.path == "/api/art-test/save":
+        elif parsed.path in ("/api/art-test/save", "/api/track/confirm"):
             self.handle_post_art_test_save()
         elif parsed.path == "/api/ocr":
             self.handle_post_ocr()

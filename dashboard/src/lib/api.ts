@@ -197,7 +197,7 @@ export async function saveItunesUrl(
   track: { artist: string; title: string },
   itunesUrl: string,
 ): Promise<void> {
-  const resp = await fetch(`${apiBase}/api/art-test/save`, {
+  const resp = await fetch(`${apiBase}/api/track/confirm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

@@ -500,13 +500,14 @@ export function useRecap(): RecapState {
     async (track: { artist: string; title: string; track_key: string }, url: string) => {
       setError(null);
       try {
-        const resp = await fetch(`${apiBase}/api/art-test/save`, {
+        const resp = await fetch(`${apiBase}/api/track/confirm`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             artist: track.artist,
             title: track.title,
-            album_art_url: url,
+            album_art_url: btoa(url),
+            is_encoded: true,
           }),
         });
         if (!resp.ok) {
