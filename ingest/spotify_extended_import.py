@@ -213,7 +213,7 @@ def import_spotify_extended_history(conn: sqlite3.Connection, zip_path: Path, mi
 def main():
     parser = argparse.ArgumentParser(description="Import Spotify Extended Streaming History zip file.")
     parser.add_argument("--zip", type=str, default="data/my_spotify_data.zip", help="Path to my_spotify_data.zip")
-    parser.add_argument("--min-sec", type=int, default=30, help="Minimum listen duration in seconds to count as a play")
+    parser.add_argument("--min-sec", type=int, default=8, help="Minimum listen duration in seconds to count as a play")
     parser.add_argument("--dry-run", action="store_true", help="Perform a dry run without committing database changes")
     args = parser.parse_args()
 
