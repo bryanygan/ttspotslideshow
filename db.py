@@ -519,6 +519,88 @@ def window_track_candidates(conn: sqlite3.Connection, start_unix: int) -> list:
     return list(groups.values())
 
 
+def recent_track_candidates(conn: sqlite3.Connection, limit: int) -> list:
+    """Aggregate the most recent 'limit' canonical plays into unique candidate tracks."""
+    # Fetch a buffer of recent plays to tolerate cross-source deduplication drops
+    buffer_limit = max(limit * 3, 200)
+    rows = conn.execute(
+        "SELECT * FROM plays WHERE played_at_unix IS NOT NULL "
+        "ORDER BY played_at_unix DESC LIMIT ?",
+        (buffer_limit,)
+    ).fetchall()
+    # Reverse to restore chronological order (ASC) for canonical de-duplication
+    rows = list(reversed(rows))
+
+    genres = {
+        r["artist_key"]: r["primary_bucket"]
+        for r in conn.execute(
+            "SELECT artist_key, primary_bucket FROM artist_genres"
+        ).fetchall()
+    }
+
+    result: list = []
+    recent: list[dict] = []
+    window_seconds = 120
+
+    for row in rows:
+        unix = row["played_at_unix"]
+        key = (normalize(row["artist"]), normalize(row["name"]))
+        recent = [r for r in recent if unix - r["unix"] <= window_seconds]
+
+        twin = next(
+            (r for r in recent if r["key"] == key and r["source"] != row["source"]),
+            None,
+        )
+        if twin is not None:
+            if row["source"] == "spotify" and twin["source"] == "lastfm":
+                result[twin["index"]] = row
+                twin["source"] = "spotify"
+            continue
+
+        result.append(row)
+        recent.append(
+            {"unix": unix, "key": key, "source": row["source"],
+             "index": len(result) - 1}
+        )
+
+    # Slice the last 'limit' canonical plays
+    canonical_recent = result[-limit:] if len(result) > limit else result
+
+    # Aggregate into candidate tracks
+    groups: dict = {}
+    for r in canonical_recent:
+        unix = r["played_at_unix"]
+        artist_key = normalize(r["artist"])
+        track_key = artist_key + "\t" + normalize(r["name"])
+        g = groups.get(track_key)
+        if g is None:
+            groups[track_key] = {
+                "track_key": track_key,
+                "play_count": 1,
+                "track_id": r["track_id"],
+                "title": r["name"],
+                "artist": r["artist"],
+                "album_art_url": r["album_art_url"],
+                "last_played_unix": unix,
+                "primary_bucket": genres.get(artist_key, "unknown"),
+                "popularity": r["popularity"],
+            }
+            continue
+        g["play_count"] += 1
+        if unix >= g["last_played_unix"]:
+            g["last_played_unix"] = unix
+            g["track_id"] = r["track_id"]
+            g["title"] = r["name"]
+            g["artist"] = r["artist"]
+            g["album_art_url"] = r["album_art_url"]
+            g["popularity"] = r["popularity"]
+
+    # Order candidates by recency
+    candidates = list(groups.values())
+    candidates.sort(key=lambda x: x["last_played_unix"], reverse=True)
+    return candidates
+
+
 def update_track_art(conn: sqlite3.Connection, artist: str, name: str, album_art_url: str) -> None:
     """Update the album_art_url for all occurrences of a track in the plays table."""
     conn.execute(

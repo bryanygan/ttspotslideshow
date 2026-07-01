@@ -1,5 +1,8 @@
 // Time windows (days) offered for the candidate query.
-export const WINDOWS = [3, 7, 14, 30, 90, 180, 365] as const;
+export const WINDOWS = [1, 3, 7, 14, 30, 90, 180, 365] as const;
+
+// Most recent play limits offered.
+export const RECENT_LIMITS = [25, 50, 100, 250] as const;
 
 // Target sizes for the smart-selection presets. 4-up slides render best at
 // multiples of 4.
@@ -35,6 +38,8 @@ export const COVER_THEMES: CoverTheme[] = [
 
 // Compact label for a window length (e.g. 7 -> "7d", 90 -> "3mo", 365 -> "1yr").
 export function windowLabel(days: number): string {
+  if (days < 0) return `${-days} plays`;
+  if (days === 1) return "Last Day";
   if (days >= 365) return "1yr";
   if (days >= 90) return `${Math.round(days / 30)}mo`;
   return `${days}d`;
@@ -42,6 +47,8 @@ export function windowLabel(days: number): string {
 
 // Longer label for headers and the cover subtitle default.
 export function windowLongLabel(days: number): string {
+  if (days < 0) return `Last ${-days} Plays`;
+  if (days === 1) return "Last 24 Hours";
   if (days >= 365) return "Last 1 Year";
   if (days >= 90) return `Last ${Math.round(days / 30)} Months`;
   return `Last ${days} Days`;

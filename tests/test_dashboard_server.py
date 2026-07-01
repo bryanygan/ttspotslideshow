@@ -25,7 +25,7 @@ class FakeRfile:
         return self.data[:n]
 
 
-class DummyHandler(dashboard_server.DashboardHandler):
+class DummyHandler(dashboard_server.DashboardHandlerHelper):
 
     def __init__(self, body: bytes = b""):
         self.headers = {"Content-Length": str(len(body))}
@@ -123,7 +123,8 @@ def test_generate_returns_slide_urls(monkeypatch):
             "date": "2026-06-25", "track_count": 8, "slide_count": 2,
             "genre_spread": {}, "out_dir": str(Path("output") / "slides" / "recap-2026-06-25"),
         }
-    monkeypatch.setattr(dashboard_server, "build_recap_slideshow", fake_build)
+    import slideshow.builder
+    monkeypatch.setattr(slideshow.builder, "build_recap_slideshow", fake_build)
 
     from contextlib import contextmanager
     @contextmanager

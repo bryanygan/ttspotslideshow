@@ -132,12 +132,17 @@ class DashboardHandlerHelper:
         except (ValueError, TypeError):
             days = 7
 
-        now_unix = int(time.time())
-        start_unix = now_unix - days * 86400
-
         try:
             with db.connect() as conn:
-                candidates = db.window_track_candidates(conn, start_unix)
+                if days < 0:
+                    limit = -days
+                    print(f"[CANDIDATES] Fetching most recent {limit} plays", flush=True)
+                    candidates = db.recent_track_candidates(conn, limit)
+                else:
+                    now_unix = int(time.time())
+                    start_unix = now_unix - days * 86400
+                    print(f"[CANDIDATES] Fetching window of {days} days (start_unix={start_unix})", flush=True)
+                    candidates = db.window_track_candidates(conn, start_unix)
                 featured = db.featured_history(conn)
                 recent_featured = db.recent_featured_history(conn, last_n_days=14)
         except Exception as e:

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import type { RecapState } from "../../lib/useRecap";
-import { WINDOWS, windowLabel, COVER_THEMES } from "../../lib/constants";
+import { WINDOWS, RECENT_LIMITS, windowLabel, COVER_THEMES } from "../../lib/constants";
 import { resolveArt } from "../../lib/api";
 import { PRESETS } from "../../lib/presets";
 import { AlbumArt } from "../../ui/AlbumArt";
@@ -165,21 +165,49 @@ function BrowseHeader({ r, onSelectPreset }: { r: RecapState; onSelectPreset: (i
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-          {WINDOWS.map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => r.setDays(d)}
-              className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                r.days === d
-                  ? "bg-violet-500 text-white shadow-md shadow-violet-900/40"
-                  : "bg-white/5 text-zinc-400 hover:bg-white/10"
-              }`}
-            >
-              {windowLabel(d)}
-            </button>
-          ))}
+        <div className="flex flex-col gap-3.5 bg-white/[0.02] border border-white/5 rounded-2xl p-4">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-500 block mb-2">Date Range</span>
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              {WINDOWS.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => r.setDays(d)}
+                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                    r.days === d
+                      ? "bg-violet-500 text-white shadow-md shadow-violet-900/40"
+                      : "bg-white/5 text-zinc-400 hover:bg-white/10"
+                  }`}
+                >
+                  {windowLabel(d)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-500 block mb-2">Most Recent Plays</span>
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              {RECENT_LIMITS.map((limit) => {
+                const val = -limit;
+                return (
+                  <button
+                    key={limit}
+                    type="button"
+                    onClick={() => r.setDays(val)}
+                    className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                      r.days === val
+                        ? "bg-violet-500 text-white shadow-md shadow-violet-900/40"
+                        : "bg-white/5 text-zinc-400 hover:bg-white/10"
+                    }`}
+                  >
+                    {limit} Plays
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
