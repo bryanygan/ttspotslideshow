@@ -137,6 +137,29 @@ export function PocketDJ({ r }: { r: RecapState }) {
 // ---- Browse ---------------------------------------------------------------
 
 function BrowseHeader({ r, onSelectPreset }: { r: RecapState; onSelectPreset: (id: string) => void }) {
+  const [timeframeOpen, setTimeframeOpen] = useState(true);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      // Skip small scroll variations (iOS bounce)
+      if (Math.abs(currentScrollY - lastScrollY.current) < 15) return;
+
+      if (currentScrollY > lastScrollY.current && currentScrollY > 100) {
+        // Scrolling down -> collapse timeframe
+        setTimeframeOpen(false);
+      } else if (currentScrollY < lastScrollY.current) {
+        // Scrolling up -> expand timeframe
+        setTimeframeOpen(true);
+      }
+      lastScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   const layoutCounts = r.layout === "3x3"
     ? [9, 18, 27, 36]
     : r.layout === "4x4"
@@ -146,26 +169,57 @@ function BrowseHeader({ r, onSelectPreset }: { r: RecapState; onSelectPreset: (i
   return (
     <div className="sticky top-11 z-30 border-b border-white/5 bg-[#0b0b12]/85 backdrop-blur">
       <div className="mx-auto flex max-w-3xl flex-col gap-2.5 px-4 py-3">
-        <div className="relative">
-          <input
-            type="text"
-            value={r.searchQuery}
-            onChange={(e) => r.setSearchQuery(e.target.value)}
-            placeholder="Search your tracks or Spotify…"
-            className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 pr-9 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40"
-          />
-          {r.searchQuery && (
-            <button
-              type="button"
-              onClick={r.clearSearch}
-              aria-label="Clear search"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200"
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={r.searchQuery}
+              onChange={(e) => r.setSearchQuery(e.target.value)}
+              placeholder="Search your tracks or Spotify…"
+              className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 pr-9 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+            />
+            {r.searchQuery && (
+              <button
+                type="button"
+                onClick={r.clearSearch}
+                aria-label="Clear search"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setTimeframeOpen((o) => !o)}
+            aria-label="Toggle Timeframe Options"
+            title="Toggle Timeframe Options"
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-zinc-400 hover:text-zinc-200 hover:bg-white/10 transition-all cursor-pointer ${
+              timeframeOpen ? "text-violet-400 border-violet-500/30 bg-violet-500/10" : ""
+            }`}
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
             >
-              ×
-            </button>
-          )}
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+              />
+            </svg>
+          </button>
         </div>
-        <div className="flex flex-col gap-3.5 bg-white/[0.02] border border-white/5 rounded-2xl p-4">
+        <div
+          className={`flex flex-col gap-3.5 bg-white/[0.02] border rounded-2xl transition-all duration-300 ease-in-out origin-top overflow-hidden ${
+            timeframeOpen
+              ? "max-h-40 opacity-100 p-4 border-white/5 mt-0"
+              : "max-h-0 opacity-0 p-0 border-transparent -mt-2.5 pointer-events-none"
+          }`}
+        >
           <div>
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-500 block mb-2">Date Range</span>
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
