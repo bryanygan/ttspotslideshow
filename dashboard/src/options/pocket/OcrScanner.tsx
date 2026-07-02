@@ -92,7 +92,7 @@ export function OcrScanner({ r }: { r: RecapState }) {
   const alreadySelected = (key: string) => r.selectedKeys.has(key);
 
   return (
-    <div className="flex flex-col gap-6 pt-2 min-h-screen bg-[#0b0b12] pb-28">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pt-2 min-h-screen bg-[#0b0b12] pb-28">
       <div>
         <h2 className="font-display text-2xl font-bold text-white">Screenshot Scanner</h2>
         <p className="mt-1 text-sm text-zinc-400">
@@ -173,7 +173,7 @@ export function OcrScanner({ r }: { r: RecapState }) {
       {!r.ocrLoading && r.ocrTracks.length > 0 && (
         <div className="flex flex-col gap-4">
           {/* Header row */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <span className="text-sm font-bold text-white">{r.ocrTracks.length} track{r.ocrTracks.length !== 1 ? "s" : ""} detected</span>
               <span className="ml-2 text-xs text-zinc-400">({checkedCount} selected)</span>

@@ -23,53 +23,44 @@ function App() {
   return (
     <div>
       <header className="fixed inset-x-0 top-0 z-50 h-11 border-b border-white/10 bg-black/85 backdrop-blur">
-        <div className="mx-auto flex h-full max-w-3xl items-center justify-between px-4">
-          <span className="flex items-center gap-2 font-display text-sm font-bold tracking-wide text-white">
+        <div className="mx-auto flex h-full max-w-3xl items-center justify-between gap-2 px-3 sm:px-4">
+          <span className="flex shrink-0 items-center gap-2 font-display text-sm font-bold tracking-wide text-white">
             <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-tr from-violet-600 to-fuchsia-500 text-white">
               <MusicIcon className="h-4 w-4" />
             </span>
-            Weekly Recap
+            {/* Brand text costs too much width on phones — icon carries it there. */}
+            <span className="hidden md:inline">Weekly Recap</span>
           </span>
 
           {/* View switcher tabs */}
-          <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 text-xs font-semibold">
-            <button
-              onClick={() => setViewMode("picker")}
-              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                viewMode === "picker"
-                  ? "bg-violet-600 text-white shadow"
-                  : "text-zinc-400 hover:text-zinc-100"
-              }`}
-            >
-              Recap Picker
-            </button>
-            <button
-              onClick={() => setViewMode("ocr")}
-              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                viewMode === "ocr"
-                  ? "bg-violet-600 text-white shadow"
-                  : "text-zinc-400 hover:text-zinc-100"
-              }`}
-            >
-              Screenshot
-            </button>
-            <button
-              onClick={() => setViewMode("playlist")}
-              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                viewMode === "playlist"
-                  ? "bg-violet-600 text-white shadow"
-                  : "text-zinc-400 hover:text-zinc-100"
-              }`}
-            >
-              Playlist
-            </button>
+          <div className="flex min-w-0 bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 text-xs font-semibold">
+            {(
+              [
+                { id: "picker", short: "Picker", full: "Recap Picker" },
+                { id: "ocr", short: "Scan", full: "Screenshot" },
+                { id: "playlist", short: "Playlist", full: "Playlist" },
+              ] as const
+            ).map(({ id, short, full }) => (
+              <button
+                key={id}
+                onClick={() => setViewMode(id)}
+                className={`px-2.5 py-1 sm:px-3 rounded-md whitespace-nowrap transition-all cursor-pointer ${
+                  viewMode === id
+                    ? "bg-violet-600 text-white shadow"
+                    : "text-zinc-400 hover:text-zinc-100"
+                }`}
+              >
+                <span className="sm:hidden">{short}</span>
+                <span className="hidden sm:inline">{full}</span>
+              </button>
+            ))}
           </div>
 
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
             aria-label="Settings"
-            className="rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-white/10 hover:text-white"
+            className="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-white/10 hover:text-white"
           >
             <GearIcon className="h-5 w-5" />
           </button>

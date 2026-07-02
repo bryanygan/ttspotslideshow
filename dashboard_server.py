@@ -45,6 +45,10 @@ class RateLimiter:
 # dashboard use, but caps runaway/abusive clients.
 RATE_LIMITER = RateLimiter(capacity=60, refill_rate=1.0)
 
+# Only one on-demand logger refresh may run at a time (double-taps on the
+# dashboard button, or a refresh overlapping the scheduled bi-daily run).
+LOGGER_REFRESH_LOCK = threading.Lock()
+
 
 _cached_handler_cls = None
 
@@ -122,6 +126,8 @@ class DashboardHandlerHelper:
             self.handle_post_playlist_save()
         elif parsed.path == "/api/search/spotify":
             self.handle_post_spotify_search()
+        elif parsed.path == "/api/logger/refresh":
+            self.handle_post_logger_refresh()
         else:
             self.send_error(404, "Not Found")
 
@@ -670,6 +676,70 @@ class DashboardHandlerHelper:
             self._send_json(400, {"error": str(e)})
         except Exception as e:
             self._send_json(500, {"error": str(e)})
+
+    def handle_post_logger_refresh(self):
+        """Pull the newest plays on demand (Spotify recently-played + Last.fm).
+
+        Mirrors the ingest half of run_bidaily (no popularity enrichment, no
+        slideshow build) so the dashboard's candidate list can be brought up to
+        date with one tap. Each source fails independently — a Spotify 429
+        doesn't block the Last.fm pull, and vice versa.
+        """
+        if not LOGGER_REFRESH_LOCK.acquire(blocking=False):
+            self._send_json(409, {"error": "A refresh is already running. Give it a moment."})
+            return
+
+        try:
+            db.init_db()
+            spotify_added = 0
+            lastfm_added = 0
+            errors = []
+
+            try:
+                config.assert_credentials()
+                from logger import log_recent_plays
+                print("[LOGGER REFRESH] Fetching recently played from Spotify...", flush=True)
+                spotify_added = log_recent_plays()
+                print(f"[LOGGER REFRESH] Spotify added {spotify_added} play(s)", flush=True)
+            except Exception as e:
+                print(f"[LOGGER REFRESH] Spotify ingest failed: {e}", flush=True)
+                errors.append(f"Spotify: {e}")
+
+            try:
+                if not config.LASTFM_API_KEY:
+                    raise RuntimeError("LASTFM_API_KEY not configured")
+                username = config.get_lastfm_user()
+                if not username:
+                    raise RuntimeError("Last.fm username not configured")
+                from ingest.lastfm_import import import_recent_from_api
+                print(f"[LOGGER REFRESH] Fetching recent scrobbles for '{username}' from Last.fm...", flush=True)
+                with db.connect() as conn:
+                    since_unix = db.latest_lastfm_played_at_unix(conn)
+                    lastfm_added = import_recent_from_api(
+                        conn,
+                        api_key=config.LASTFM_API_KEY,
+                        username=username,
+                        since_unix=since_unix,
+                    )
+                print(f"[LOGGER REFRESH] Last.fm added {lastfm_added} play(s)", flush=True)
+            except Exception as e:
+                print(f"[LOGGER REFRESH] Last.fm ingest failed: {e}", flush=True)
+                errors.append(f"Last.fm: {e}")
+
+            if len(errors) == 2:
+                # Both sources failed — surface it as an error, not a quiet 0.
+                self._send_json(502, {"error": " · ".join(errors)})
+                return
+
+            self._send_json(200, {
+                "status": "success",
+                "spotify_added": spotify_added,
+                "lastfm_added": lastfm_added,
+                "total_plays": db.play_count(),
+                "errors": errors,
+            })
+        finally:
+            LOGGER_REFRESH_LOCK.release()
 
     def handle_static_files(self, parsed):
         dist_dir = Path("dashboard") / "dist"

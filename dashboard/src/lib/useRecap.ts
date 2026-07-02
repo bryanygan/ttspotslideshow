@@ -12,6 +12,7 @@ import {
   parsePlaylist,
   savePlaylist,
   searchSpotify,
+  refreshLogger,
   MissingCoverError,
   UnconfirmedCoverError,
 } from "./api";
@@ -61,6 +62,11 @@ export interface RecapState {
   loading: boolean;
   error: string | null;
   refetch: () => void;
+
+  // On-demand logger refresh (pull newest Spotify + Last.fm plays)
+  refreshingPlays: boolean;
+  refreshMessage: string | null;
+  refreshPlays: () => void;
 
   selectedKeys: Set<string>;
   selectedOrder: string[];
@@ -314,6 +320,33 @@ export function useRecap(): RecapState {
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  const [refreshingPlays, setRefreshingPlays] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const refreshMessageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refreshPlays = useCallback(async () => {
+    setRefreshingPlays(true);
+    setError(null);
+    if (refreshMessageTimer.current) clearTimeout(refreshMessageTimer.current);
+    setRefreshMessage(null);
+    try {
+      const result = await refreshLogger(apiBase);
+      const total = result.spotify_added + result.lastfm_added;
+      const parts: string[] = [];
+      if (result.spotify_added > 0) parts.push(`${result.spotify_added} from Spotify`);
+      if (result.lastfm_added > 0) parts.push(`${result.lastfm_added} from Last.fm`);
+      let message = total > 0 ? `Added ${parts.join(" + ")}` : "Already up to date";
+      if (result.errors.length > 0) message += ` (${result.errors.join(" · ")})`;
+      setRefreshMessage(message);
+      refreshMessageTimer.current = setTimeout(() => setRefreshMessage(null), 6000);
+      if (total > 0) await refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh plays.");
+    } finally {
+      setRefreshingPlays(false);
+    }
+  }, [apiBase, refetch]);
 
   const sortedCandidates = useMemo(() => {
     const list = [...candidates];
@@ -890,6 +923,9 @@ export function useRecap(): RecapState {
     loading,
     error,
     refetch,
+    refreshingPlays,
+    refreshMessage,
+    refreshPlays,
     selectedKeys,
     selectedOrder,
     selectedTracks,

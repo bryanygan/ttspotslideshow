@@ -120,7 +120,7 @@ export function PlaylistImporter({ r }: { r: RecapState }) {
       {/* Results */}
       {!r.playlistLoading && r.playlistTracks.length > 0 && (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <span className="text-sm font-bold text-white">
                 {r.playlistTracks.length} track{r.playlistTracks.length !== 1 ? "s" : ""}

@@ -309,6 +309,29 @@ export async function savePlaylist(
   return resp.json();
 }
 
+export interface LoggerRefreshResult {
+  spotify_added: number;
+  lastfm_added: number;
+  total_plays: number;
+  errors: string[];
+}
+
+// Ask the backend to pull the newest plays right now (Spotify recently-played
+// + Last.fm scrobbles), so the candidate list can be refreshed on demand.
+export async function refreshLogger(apiBase: string): Promise<LoggerRefreshResult> {
+  const resp = await fetch(`${apiBase}/api/logger/refresh`, { method: "POST" });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data.error || `Refresh failed (HTTP ${resp.status}).`);
+  }
+  return {
+    spotify_added: data.spotify_added ?? 0,
+    lastfm_added: data.lastfm_added ?? 0,
+    total_plays: data.total_plays ?? 0,
+    errors: data.errors ?? [],
+  };
+}
+
 export interface RecapHistoryEntry {
   recap_id: string;
   date: string;

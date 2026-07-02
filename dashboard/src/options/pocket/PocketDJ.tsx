@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import type { RecapState } from "../../lib/useRecap";
-import { WINDOWS, RECENT_LIMITS, windowLabel, COVER_THEMES } from "../../lib/constants";
+import { WINDOWS, RECENT_LIMITS, windowLabel, windowLongLabel, COVER_THEMES } from "../../lib/constants";
 import { resolveArt } from "../../lib/api";
 import { PRESETS } from "../../lib/presets";
 import { AlbumArt } from "../../ui/AlbumArt";
@@ -10,7 +10,8 @@ import { SelectedTray } from "../../ui/SelectedTray";
 import { SlideGallery } from "../../ui/SlideGallery";
 import { Summary } from "../../ui/Summary";
 import { ErrorBanner } from "../../ui/ErrorBanner";
-import { HistoryIcon } from "../../ui/icons";
+import { Sheet } from "../../ui/Sheet";
+import { HistoryIcon, RefreshIcon } from "../../ui/icons";
 import { underratedScore } from "../../lib/types";
 import {
   GridIcon,
@@ -29,6 +30,10 @@ export function PocketDJ({ r }: { r: RecapState }) {
   const [tab, setTab] = useState<Tab>("browse");
   const historyLoaded = useRef(false);
   const [pendingPresetId, setPendingPresetId] = useState<string | null>(null);
+  // Lives here (not in BrowseHeader) because the header's backdrop-blur makes
+  // it a containing block for position:fixed — a sheet inside it can't overlay
+  // the viewport.
+  const [presetSheetOpen, setPresetSheetOpen] = useState(false);
 
   // Load recap history lazily when first visiting the History tab.
   useEffect(() => {
@@ -48,7 +53,9 @@ export function PocketDJ({ r }: { r: RecapState }) {
 
   return (
     <div className="min-h-screen bg-[#0b0b12] pb-28 font-sans text-zinc-100">
-      {tab === "browse" && <BrowseHeader r={r} onSelectPreset={handleSelectPreset} />}
+      {tab === "browse" && (
+        <BrowseHeader r={r} onOpenPresets={() => setPresetSheetOpen(true)} />
+      )}
 
       <main className="mx-auto w-full max-w-3xl px-4 pt-4">
         {r.error && (
@@ -76,8 +83,14 @@ export function PocketDJ({ r }: { r: RecapState }) {
       )}
 
       {pendingPresetId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 text-zinc-100 shadow-2xl shadow-black/80 animate-in fade-in zoom-in-95 duration-150">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm"
+          onClick={() => setPendingPresetId(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 text-zinc-100 shadow-2xl shadow-black/80 animate-in fade-in zoom-in-95 duration-150"
+          >
             <h3 className="font-display text-lg font-bold text-white flex items-center gap-2">
               <span>✨</span> Apply Smart Fill
             </h3>
@@ -129,6 +142,39 @@ export function PocketDJ({ r }: { r: RecapState }) {
         </div>
       )}
 
+      <Sheet
+        open={presetSheetOpen}
+        onClose={() => setPresetSheetOpen(false)}
+        title="✨ Smart Fill"
+        panelClass="rounded-t-2xl border border-zinc-800 bg-zinc-950 text-zinc-100"
+      >
+        <div className="flex flex-col gap-2 pb-2">
+          <p className="mb-1 text-xs text-zinc-500">
+            Auto-picks {r.quickSelectCount} tracks from the current timeframe.
+          </p>
+          {PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => {
+                setPresetSheetOpen(false);
+                handleSelectPreset(preset.id);
+              }}
+              className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 text-left transition-colors hover:border-violet-500/40 hover:bg-white/[0.06] active:bg-violet-500/10 cursor-pointer"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-lg">
+                {preset.emoji}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-white">{preset.label}</span>
+                <span className="block truncate text-xs text-zinc-400">{preset.hint}</span>
+              </span>
+              <ChevronRightIcon className="h-4 w-4 shrink-0 text-zinc-600" />
+            </button>
+          ))}
+        </div>
+      </Sheet>
+
       <TabBar tab={tab} setTab={setTab} pickCount={r.selectedKeys.size} />
     </div>
   );
@@ -136,28 +182,56 @@ export function PocketDJ({ r }: { r: RecapState }) {
 
 // ---- Browse ---------------------------------------------------------------
 
-function BrowseHeader({ r, onSelectPreset }: { r: RecapState; onSelectPreset: (id: string) => void }) {
-  const [timeframeOpen, setTimeframeOpen] = useState(true);
+function BrowseHeader({ r, onOpenPresets }: { r: RecapState; onOpenPresets: () => void }) {
+  const [timeframeOpen, setTimeframeOpenRaw] = useState(true);
+  const openRef = useRef(true);
   const lastScrollY = useRef(0);
+  const scrollAccum = useRef(0);
+  // Collapsing/expanding the panel changes the page height, which itself fires
+  // scroll events; ignore them briefly after each toggle so the panel can't
+  // ping-pong at the boundary.
+  const suppressUntil = useRef(0);
+  // A manual open mid-page shouldn't be instantly undone by the next
+  // scroll-down; the hold clears once the user returns to the top.
+  const manualHold = useRef(false);
+
+  const setTimeframeOpen = (open: boolean, manual = false) => {
+    if (openRef.current === open) return;
+    openRef.current = open;
+    manualHold.current = manual && open;
+    suppressUntil.current = performance.now() + 450; // cover the 300ms height transition
+    scrollAccum.current = 0;
+    setTimeframeOpenRaw(open);
+  };
 
   useEffect(() => {
+    lastScrollY.current = Math.max(0, window.scrollY);
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      // Skip small scroll variations (iOS bounce)
-      if (Math.abs(currentScrollY - lastScrollY.current) < 15) return;
+      const y = Math.max(0, window.scrollY); // clamp iOS rubber-band negatives
+      const delta = y - lastScrollY.current;
+      lastScrollY.current = y;
+      if (performance.now() < suppressUntil.current) return;
 
-      if (currentScrollY > lastScrollY.current && currentScrollY > 100) {
-        // Scrolling down -> collapse timeframe
-        setTimeframeOpen(false);
-      } else if (currentScrollY < lastScrollY.current) {
-        // Scrolling up -> expand timeframe
+      // Accumulate travel in one direction; a direction change resets it, so
+      // tiny jitters (trackpad inertia, bounce) never flip the panel.
+      if ((delta > 0) !== (scrollAccum.current > 0)) scrollAccum.current = 0;
+      scrollAccum.current += delta;
+
+      if (y <= 24) {
+        // Back at the top: always show the timeframe panel again.
+        manualHold.current = false;
         setTimeframeOpen(true);
+      } else if (scrollAccum.current > 90 && y > 140 && !manualHold.current) {
+        // Sustained downward scroll well past the header: tuck it away.
+        setTimeframeOpen(false);
       }
-      lastScrollY.current = currentScrollY;
+      // No auto-expand mid-page — that's what caused the glitchy ping-pong.
+      // Scrolling to the top or tapping the clock button brings it back.
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const layoutCounts = r.layout === "3x3"
@@ -183,7 +257,7 @@ function BrowseHeader({ r, onSelectPreset }: { r: RecapState; onSelectPreset: (i
                 type="button"
                 onClick={r.clearSearch}
                 aria-label="Clear search"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200"
+                className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-lg leading-none text-zinc-500 hover:text-zinc-200"
               >
                 ×
               </button>
@@ -191,11 +265,13 @@ function BrowseHeader({ r, onSelectPreset }: { r: RecapState; onSelectPreset: (i
           </div>
           <button
             type="button"
-            onClick={() => setTimeframeOpen((o) => !o)}
+            onClick={() => setTimeframeOpen(!openRef.current, true)}
             aria-label="Toggle Timeframe Options"
             title="Toggle Timeframe Options"
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-zinc-400 hover:text-zinc-200 hover:bg-white/10 transition-all cursor-pointer ${
-              timeframeOpen ? "text-violet-400 border-violet-500/30 bg-violet-500/10" : ""
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-all cursor-pointer ${
+              timeframeOpen
+                ? "border-violet-500/30 bg-violet-500/10 text-violet-400"
+                : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-zinc-200"
             }`}
           >
             <svg
@@ -214,10 +290,11 @@ function BrowseHeader({ r, onSelectPreset }: { r: RecapState; onSelectPreset: (i
           </button>
         </div>
         <div
+          aria-hidden={!timeframeOpen}
           className={`flex flex-col gap-3.5 bg-white/[0.02] border rounded-2xl transition-all duration-300 ease-in-out origin-top overflow-hidden ${
             timeframeOpen
-              ? "max-h-40 opacity-100 p-4 border-white/5 mt-0"
-              : "max-h-0 opacity-0 p-0 border-transparent -mt-2.5 pointer-events-none"
+              ? "max-h-56 opacity-100 p-4 border-white/5 mt-0"
+              : "max-h-0 opacity-0 invisible p-0 border-transparent -mt-2.5 pointer-events-none"
           }`}
         >
           <div>
@@ -279,30 +356,36 @@ function BrowseHeader({ r, onSelectPreset }: { r: RecapState; onSelectPreset: (i
             </select>
           </div>
 
-          {/* Smart Fill Preset Dropdown */}
-          <select
-            value=""
-            onChange={(e) => {
-              const presetId = e.target.value;
-              if (presetId) onSelectPreset(presetId);
-            }}
+          {/* Smart Fill — opens a bottom sheet of preset cards (mobile-friendly) */}
+          <button
+            type="button"
+            onClick={onOpenPresets}
             disabled={r.candidates.length === 0}
-            className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-zinc-300 focus:border-violet-500 focus:outline-none disabled:opacity-40 cursor-pointer"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-bold text-violet-200 transition-colors hover:bg-violet-500/20 focus:outline-none disabled:opacity-40 cursor-pointer"
           >
-            <option value="" className="bg-zinc-950 text-zinc-400">✨ Smart Fill Selection...</option>
-            {PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id} className="bg-zinc-950 text-zinc-300">
-                {preset.emoji} {preset.label} — {preset.hint}
-              </option>
-            ))}
-          </select>
+            <WandIcon className="h-3.5 w-3.5" /> Smart Fill
+          </button>
         </div>
 
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-            {r.candidates.length} tracks
-          </span>
-          <div className="flex rounded-full bg-white/5 p-0.5 text-xs font-bold">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={r.refreshPlays}
+              disabled={r.refreshingPlays}
+              aria-label="Pull latest plays"
+              title="Pull latest plays from Spotify + Last.fm"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-zinc-400 transition-colors hover:bg-white/10 hover:text-zinc-200 disabled:opacity-60 cursor-pointer"
+            >
+              <RefreshIcon className={`h-3.5 w-3.5 ${r.refreshingPlays ? "animate-spin" : ""}`} />
+            </button>
+            <span className="truncate text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+              {r.refreshingPlays
+                ? "Pulling latest plays…"
+                : r.refreshMessage ?? `${r.candidates.length} tracks`}
+            </span>
+          </div>
+          <div className="flex shrink-0 rounded-full bg-white/5 p-0.5 text-xs font-bold">
             {(["plays", "underrated"] as const).map((s) => (
               <button
                 key={s}
@@ -349,7 +432,7 @@ function BrowseGrid({ r }: { r: RecapState }) {
     return (
       <EmptyState
         title="No tracks here yet"
-        body={`Nothing was logged in the last ${windowLabel(r.days)}. Try a longer window above.`}
+        body={`Nothing was logged in the ${windowLongLabel(r.days).toLowerCase()}. Try a longer window above, or tap the refresh button to pull your latest plays.`}
       />
     );
   }
@@ -392,9 +475,10 @@ function BrowseGrid({ r }: { r: RecapState }) {
               >
                 <CheckIcon className="h-4 w-4" />
               </div>
+              {/* Always visible on touch screens (no hover there); hover-reveal on desktop. */}
               <ArtUploadButton
                 onFile={(file) => r.uploadArtFor(track, file)}
-                className="absolute left-2 top-2 rounded-full bg-black/50 p-1.5 text-white/80 opacity-0 transition-opacity hover:bg-black/70 hover:text-white group-hover:opacity-100"
+                className="absolute left-2 top-2 rounded-full bg-black/50 p-1.5 text-white/80 transition-opacity hover:bg-black/70 hover:text-white sm:opacity-0 sm:group-hover:opacity-100"
               />
               {r.sortBy === "underrated" && (
                 <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-1.5 py-0.5 font-mono text-[10px] font-bold text-violet-300">
@@ -422,7 +506,7 @@ function BrowseGrid({ r }: { r: RecapState }) {
                     Featured {track.times_featured > 1 ? `×${track.times_featured}` : ""}
                   </span>
                 )}
-                {track.last_featured && (
+                {!track.recently_featured && track.last_featured && (
                   <span className="rounded bg-fuchsia-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300">
                     Featured
                   </span>
@@ -600,7 +684,8 @@ function PicksTab({ r }: { r: RecapState }) {
 
 function CreateTab({ r }: { r: RecapState }) {
   const theme = COVER_THEMES.find((t) => t.value === r.coverTheme) ?? COVER_THEMES[0];
-  const canGenerate = r.selectedKeys.size > 0 && !r.generating;
+  // Cover-only runs need no picked tracks — the backend renders just the cover.
+  const canGenerate = (r.selectedKeys.size > 0 || r.coverOnly) && !r.generating;
 
   // Format ETA seconds into a human-readable string
   const formatEta = (seconds: number | null): string => {
@@ -794,7 +879,7 @@ function MissingCoverRow({
         <span className="truncate text-xs text-zinc-400">{track.artist}</span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           type="file"
           ref={fileInputRef}

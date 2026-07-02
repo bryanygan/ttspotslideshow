@@ -20,6 +20,17 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* iOS Safari auto-zooms the page when a focused input's font is under 16px.
+     This app is mobile-first with lots of text-sm/text-xs inputs, so force
+     16px on touch-sized screens (the !important must beat Tailwind utilities). */
+  @media (max-width: 640px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
   /* Honor reduced-motion across both options. */
   @media (prefers-reduced-motion: reduce) {
     *,

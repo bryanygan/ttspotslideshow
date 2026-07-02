@@ -1,9 +1,11 @@
 import type { RecapState } from "../lib/useRecap";
 import { AlertIcon } from "./icons";
 
-// Pre-generate stats: candidate total, picked count, 4-up slide math, and a
-// nudge when the selection isn't a clean multiple of 4. Shared by both options.
+// Pre-generate stats: candidate total, picked count, per-layout slide math, and
+// a nudge when the selection isn't a clean multiple of the slide capacity.
 export function Summary({ r }: { r: RecapState }) {
+  const capacity = r.layout === "3x3" ? 9 : r.layout === "4x4" ? 16 : 4;
+  const multiples = Array.from({ length: 4 }, (_, i) => capacity * (i + 1)).join(", ");
   const rows: Array<[string, string, string]> = [
     ["Candidates", String(r.candidates.length), "text-zinc-200"],
     ["Picked", String(r.selectedKeys.size), "text-violet-300"],
@@ -36,8 +38,9 @@ export function Summary({ r }: { r: RecapState }) {
         <div className="flex items-start gap-2 rounded-xl border border-amber-900/60 bg-amber-950/30 p-3 text-xs text-amber-300">
           <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Slides render 4-up. Add or remove tracks to reach a multiple of 4
-            (12, 16, 20, 24…) so none go to waste.
+            Slides render {capacity} tracks each ({r.layout}). Add or remove
+            tracks to reach a multiple of {capacity} ({multiples}…) so none go
+            to waste.
           </span>
         </div>
       )}
