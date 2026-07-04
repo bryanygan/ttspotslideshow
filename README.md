@@ -286,6 +286,30 @@ Run weekly to gradually upgrade Last.fm genres to richer Spotify genres without 
 
 ---
 
+## Matching auto-generated captions to your existing TikTok style
+
+`slideshow/caption.py` auto-generates a caption + hashtags for every slideshow. You can make it sound more like your real posts by building a style profile from your own caption history:
+
+### 1. Export your captions (run locally — TikTok isn't reachable from most sandboxed dev environments)
+```powershell
+pip install yt-dlp
+python -m ingest.tiktok_caption_extract bghyped
+```
+Writes `data/tiktok_captions.json` (gitignored) with one entry per video: `id`, `url`, `caption`, `hashtags`, `upload_date`.
+
+> Prefer not to rely on scraping? TikTok's own **Settings → Account → Download your data** (request JSON format) gives every post's caption directly and is the more reliable long-term source — reshape it into the same `[{"caption": "..."}, ...]` list and point the next step at it.
+
+### 2. Build a style profile
+```powershell
+python -m ingest.caption_style data/tiktok_captions.json
+```
+Writes `data/caption_style_profile.json` with your average caption length/hashtag count, most-used hashtags, most-used emoji, and common opening words.
+
+### 3. Auto-applied on the next slideshow
+`slideshow/builder.py` picks up `data/caption_style_profile.json` automatically if it exists and passes it into `generate_caption(...)`, which then prefers your own emoji and hashtags over the built-in defaults.
+
+---
+
 ## Remote access — deploy the dashboard (Cloudflare Pages + Tunnel)
 
 > **Architecture:** Cloudflare Pages hosts the static React frontend. Generation runs on your home PC. The hosted page reaches the PC through a Cloudflare Tunnel.

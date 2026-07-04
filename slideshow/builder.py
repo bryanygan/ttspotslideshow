@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
+import config
 import db
 from slideshow.caption import generate_caption
 from slideshow.window import resolve_window
@@ -551,7 +552,15 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
         if video_path:
             summary["video_path"] = str(video_path)
 
-    # Generate TikTok-ready caption with hashtags
-    summary["caption"] = generate_caption(rendered, cover_title=cover_title)
+    # Generate TikTok-ready caption with hashtags, styled after the account's
+    # real captions if a style profile has been built (see ingest/caption_style.py)
+    style_profile = None
+    if config.CAPTION_STYLE_PROFILE_PATH.exists():
+        from ingest.caption_style import load_style_profile
+
+        style_profile = load_style_profile(config.CAPTION_STYLE_PROFILE_PATH)
+    summary["caption"] = generate_caption(
+        rendered, cover_title=cover_title, style_profile=style_profile
+    )
 
     return summary

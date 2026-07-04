@@ -45,6 +45,10 @@ DATA_DIR = PROJECT_ROOT / "data"
 DB_PATH = DATA_DIR / "plays.db"
 ART_OVERRIDES_DIR = DATA_DIR / "art_overrides"
 
+# Optional caption style profile built by ingest/caption_style.py from a real
+# TikTok caption export (see ingest/tiktok_caption_extract.py).
+CAPTION_STYLE_PROFILE_PATH = DATA_DIR / "caption_style_profile.json"
+
 # Where spotipy caches the OAuth token so you only log in once.
 TOKEN_CACHE_PATH = PROJECT_ROOT / ".spotify_cache"
 

@@ -1,1 +1,3 @@
 pytest==8.3.2
+# Optional: only needed to run ingest/tiktok_caption_extract.py locally
+yt-dlp

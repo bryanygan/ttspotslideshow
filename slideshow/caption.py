@@ -23,16 +23,25 @@ def _normalize_genre_to_hashtag(genre: str) -> str:
     return f"#{cleaned}"
 
 
-def get_suggested_hashtags(tracks: list[dict], max_tags: int = 5) -> list[str]:
+def get_suggested_hashtags(
+    tracks: list[dict], max_tags: int = 5, style_profile: dict | None = None
+) -> list[str]:
     """Return a list of suggested hashtag strings (with # prefix).
 
     Extracts unique genres from tracks, sorts by frequency descending, and
-    converts to hashtag format. Fills with general music hashtags if fewer
-    unique genres than max_tags.
+    converts to hashtag format. Fills remaining slots with the account's own
+    frequently-used hashtags (from style_profile["top_hashtags"]) if given,
+    else falls back to general music hashtags.
     """
     genres = [t.get("primary_bucket") for t in tracks if t.get("primary_bucket")]
+    filler_tags = (
+        style_profile["top_hashtags"]
+        if style_profile and style_profile.get("top_hashtags")
+        else _FILLER_TAGS
+    )
+
     if not genres:
-        return _FILLER_TAGS[:max_tags]
+        return filler_tags[:max_tags]
 
     # Count frequency and sort descending
     counts = {}
@@ -46,8 +55,8 @@ def get_suggested_hashtags(tracks: list[dict], max_tags: int = 5) -> list[str]:
             break
         hashtags.append(_normalize_genre_to_hashtag(genre))
 
-    # Fill with general music hashtags if needed
-    for filler in _FILLER_TAGS:
+    # Fill remaining slots with the account's own common hashtags
+    for filler in filler_tags:
         if len(hashtags) >= max_tags:
             break
         if filler not in hashtags:
@@ -56,12 +65,20 @@ def get_suggested_hashtags(tracks: list[dict], max_tags: int = 5) -> list[str]:
     return hashtags[:max_tags]
 
 
-def generate_caption(tracks: list[dict], cover_title: str | None = None) -> str:
+def generate_caption(
+    tracks: list[dict],
+    cover_title: str | None = None,
+    style_profile: dict | None = None,
+) -> str:
     """Generate a TikTok-ready caption with hashtags.
 
     Args:
         tracks: List of track dicts with keys: artist, title, primary_bucket (genre)
         cover_title: Optional cover slide title
+        style_profile: Optional profile from ingest.caption_style.analyze_captions,
+            built from an account's real caption history. When provided, its
+            top_emojis and top_hashtags are preferred over the hardcoded defaults
+            so generated captions read closer to the account's actual style.
 
     Returns:
         A formatted caption string, e.g.:
@@ -83,6 +100,8 @@ def generate_caption(tracks: list[dict], cover_title: str | None = None) -> str:
     # Build opening line
     title = cover_title if cover_title else "My Weekly Mix"
     emoji = _MUSIC_EMOJIS[0]  # 🎧
+    if style_profile and style_profile.get("top_emojis"):
+        emoji = style_profile["top_emojis"][0]
 
     # Collect unique artists (preserve order, limit to first 4)
     seen: set[str] = set()
@@ -112,7 +131,7 @@ def generate_caption(tracks: list[dict], cover_title: str | None = None) -> str:
     caption = f"{title} {emoji} Featuring: {artists_text}. "
 
     # Generate hashtags
-    hashtags = get_suggested_hashtags(tracks, max_tags=5)
+    hashtags = get_suggested_hashtags(tracks, max_tags=5, style_profile=style_profile)
     hashtags_text = " ".join(hashtags)
 
     # Check total length; if too long, truncate artist list
