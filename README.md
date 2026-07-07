@@ -268,7 +268,14 @@ python dashboard_server.py
 | **Browse** | Grid of candidates from the last 7/14/30 days, sortable by Play Count or Underrated Score. Tap to add to picks. |
 | **Picks** | Review and reorder your selection. Quick-select presets (4 / 8 / 12 / 16). |
 | **Create** | Configure the optional cover slide (title, subtitle, theme), set a watermark, hit **Generate**. Slides appear inline — long-press on mobile to save to Photos. |
+| **Bi-daily** | Trigger the automated pipeline on demand, watch its live log, and browse the history of past dated slide sets (with captions). See below. |
 | **Screenshot** | Drag-and-drop a Spotify queue screenshot → Windows OCR detects tracks → add them to picks in one tap. |
+
+A slim **connection banner** under the header monitors `GET /api/health`. If the
+backend is unreachable it shows a clear "can't reach the backend — retrying in
+Ns" strip and auto-recovers once it's back (no more cryptic blank/CORS screen);
+degraded states (low disk, caption model offline, stale bi-daily slides) show as
+warnings.
 
 ### Album art resolution order
 
@@ -311,6 +318,11 @@ python run_bidaily.py [--skip-spotify] [--skip-lastfm] [--out-dir <path>]
 
 Runs: log Spotify plays → fetch Last.fm scrobbles → build slideshow.
 
+You can also trigger this from the dashboard's **Bi-daily** tab (`POST
+/api/bidaily/run`, which skips the slow popularity enrichment by default for a
+fast on-demand build), watch its live log (`GET /api/bidaily/status`), and browse
+past dated slide sets (`GET /api/bidaily/history`).
+
 ### Task Scheduler setup
 
 1. **Task Scheduler** → **Create Basic Task** → name it `Spotify-Slideshow-Generator`.
@@ -327,6 +339,29 @@ Add arguments:  -m ingest.enrich_cli --refresh
 Start in:       <repo root>
 ```
 Run weekly to gradually upgrade Last.fm genres to richer Spotify genres without hammering the rate limit.
+
+---
+
+## Reliability — run the backend as a service
+
+The dashboard backend is long-running, so run it as an **auto-restarting Windows
+service** via [NSSM](https://nssm.cc/) rather than a Task Scheduler task. (A
+scheduled task's 72-hour execution limit silently kills the server, and a
+boot-only trigger never restarts it — this caused a multi-day outage.)
+
+```powershell
+# One-time, from an elevated PowerShell:
+powershell -ExecutionPolicy Bypass -File scripts\install_dashboard_service.ps1
+```
+
+This installs the `ttspot-dashboard` service (auto-start at boot, **restart on
+any crash**, runs before login), disables the old `ttspot-Dashboard` task, and
+takes over port 8000. Manage it with `nssm status/stop/start ttspot-dashboard`
+or the Services app. `scripts\uninstall_dashboard_service.ps1` reverses it.
+
+The periodic jobs (`ttspot-Slideshow` bi-daily, logger) stay as Task Scheduler
+tasks — those are short-lived and now carry restart-on-failure so a transient
+error (e.g. a flaky album-art download) self-heals with a retry.
 
 ---
 

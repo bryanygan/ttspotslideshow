@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 import { useRecap } from "./lib/useRecap";
+import { useHealth } from "./lib/useHealth";
 import { PocketDJ } from "./options/pocket/PocketDJ";
 import { OcrScanner } from "./options/pocket/OcrScanner";
 import { PlaylistImporter } from "./options/pocket/PlaylistImporter";
+import { BiDailyPanel } from "./ui/BiDailyPanel";
+import { ConnectionBanner } from "./ui/ConnectionBanner";
 import { Sheet } from "./ui/Sheet";
 import { GearIcon, MusicIcon } from "./ui/icons";
 
 // App shell: one useRecap() instance plus a slim top bar (brand + settings).
 function App() {
   const r = useRecap();
+  const health = useHealth(r.apiBase);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tempApiBase, setTempApiBase] = useState(r.apiBase);
-  const [viewMode, setViewMode] = useState<"picker" | "ocr" | "playlist">("picker");
+  const [viewMode, setViewMode] = useState<"picker" | "ocr" | "playlist" | "bidaily">("picker");
 
   // Sync tempApiBase when the settings sheet is opened
   useEffect(() => {
@@ -37,6 +41,7 @@ function App() {
             {(
               [
                 { id: "picker", short: "Picker", full: "Recap Picker" },
+                { id: "bidaily", short: "Auto", full: "Bi-daily" },
                 { id: "ocr", short: "Scan", full: "Screenshot" },
                 { id: "playlist", short: "Playlist", full: "Playlist" },
               ] as const
@@ -68,7 +73,13 @@ function App() {
       </header>
 
       <div className="pt-11">
+        <div className="sticky top-11 z-40">
+          <ConnectionBanner h={health} />
+        </div>
         {viewMode === "picker" && <PocketDJ r={r} />}
+        {viewMode === "bidaily" && (
+          <BiDailyPanel apiBase={r.apiBase} active={viewMode === "bidaily"} />
+        )}
         {viewMode === "ocr" && <OcrScanner r={r} />}
         {viewMode === "playlist" && <PlaylistImporter r={r} />}
       </div>

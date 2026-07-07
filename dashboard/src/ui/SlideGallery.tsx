@@ -1,44 +1,12 @@
-import { useState } from "react";
 import type { RecapState } from "../lib/useRecap";
+import { CopyButton } from "./CopyButton";
 
 // Rendered slides + save-to-Photos guidance, shown after a successful generate.
 // Shared by both options.
 export function SlideGallery({ r }: { r: RecapState }) {
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
-
   if (r.slideUrls.length === 0) return null;
 
   const caption = r.summary?.caption;
-
-  async function handleCopy() {
-    if (!caption) return;
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(caption);
-      } else {
-        // Fallback for non-secure contexts (e.g. http:// over LAN on a phone),
-        // where navigator.clipboard is unavailable.
-        const ta = document.createElement("textarea");
-        ta.value = caption;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        const ok = document.execCommand("copy");
-        document.body.removeChild(ta);
-        if (!ok) throw new Error("copy command failed");
-      }
-      setCopyFailed(false);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Last resort: prompt the user to long-press the (select-all) text.
-      setCopyFailed(true);
-      setTimeout(() => setCopyFailed(false), 4000);
-    }
-  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -87,13 +55,7 @@ export function SlideGallery({ r }: { r: RecapState }) {
               >
                 {r.regeneratingCaption ? "Rerolling…" : "🔄 Regenerate"}
               </button>
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="rounded-lg border border-violet-700/60 bg-violet-900/40 px-2.5 py-1.5 text-[11px] font-semibold text-violet-300 transition-colors hover:bg-violet-800/60"
-              >
-                {copied ? "Copied!" : copyFailed ? "Long-press ↓" : "Copy"}
-              </button>
+              <CopyButton text={caption} />
             </div>
           </div>
           <pre
@@ -103,11 +65,6 @@ export function SlideGallery({ r }: { r: RecapState }) {
           >
             {caption}
           </pre>
-          {copyFailed && (
-            <span className="text-[10px] text-violet-400/80">
-              Auto-copy blocked here — long-press the text above to select and copy.
-            </span>
-          )}
         </div>
       )}
 

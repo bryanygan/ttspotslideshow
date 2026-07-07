@@ -1,4 +1,49 @@
-import type { Candidate, GenerateSummary } from "./types";
+import type {
+  Candidate,
+  GenerateSummary,
+  Health,
+  BidailyStatus,
+  BidailyEntry,
+} from "./types";
+
+// GET /api/health — throws if the backend is unreachable (used as a liveness probe).
+export async function fetchHealth(apiBase: string, signal?: AbortSignal): Promise<Health> {
+  const resp = await fetch(`${apiBase}/api/health`, { signal });
+  if (!resp.ok) throw new Error(`Health check failed (HTTP ${resp.status}).`);
+  return resp.json();
+}
+
+// POST /api/bidaily/run — kick off the automated pipeline in the background.
+export async function runBidaily(
+  apiBase: string,
+  opts?: { skip_popularity?: boolean },
+): Promise<void> {
+  const resp = await fetch(`${apiBase}/api/bidaily/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts ?? {}),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.error || `Couldn't start the run (HTTP ${resp.status}).`);
+  }
+}
+
+export async function fetchBidailyStatus(
+  apiBase: string,
+  signal?: AbortSignal,
+): Promise<BidailyStatus> {
+  const resp = await fetch(`${apiBase}/api/bidaily/status`, { signal });
+  if (!resp.ok) throw new Error(`Status check failed (HTTP ${resp.status}).`);
+  return resp.json();
+}
+
+export async function fetchBidailyHistory(apiBase: string): Promise<BidailyEntry[]> {
+  const resp = await fetch(`${apiBase}/api/bidaily/history`);
+  if (!resp.ok) throw new Error(`Couldn't load bi-daily history (HTTP ${resp.status}).`);
+  const data = await resp.json();
+  return data.history ?? [];
+}
 
 // Resolve a possibly-relative album-art / override URL against the backend.
 // Spotify URLs are absolute (http...); override URLs are server-relative.
