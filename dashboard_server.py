@@ -91,12 +91,13 @@ def _run_bidaily_pipeline(skip_spotify, skip_lastfm, skip_popularity):
     handler.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
     )
-    # Attach to the run_bidaily logger and root so nested module logs surface too.
-    targets = [logging.getLogger("run_bidaily"), logging.getLogger()]
-    for lg in targets:
-        lg.addHandler(handler)
-        if lg.level == logging.NOTSET or lg.level > logging.INFO:
-            lg.setLevel(logging.INFO)
+    # Attach to the root logger only: run_bidaily's logger and the nested module
+    # loggers (db, ingest, slideshow) all propagate to root, so this captures
+    # every record exactly once (attaching to both would double each line).
+    root = logging.getLogger()
+    root.addHandler(handler)
+    if root.level == logging.NOTSET or root.level > logging.INFO:
+        root.setLevel(logging.INFO)
 
     with _BIDAILY_LOCK:
         _BIDAILY_STATE.update(
@@ -119,8 +120,7 @@ def _run_bidaily_pipeline(skip_spotify, skip_lastfm, skip_popularity):
                 running=False, finished_at=time.time(), ok=False, error=str(e),
             )
     finally:
-        for lg in targets:
-            lg.removeHandler(handler)
+        root.removeHandler(handler)
 
 
 _cached_handler_cls = None
