@@ -3,6 +3,7 @@
 Run: python -m slideshow.cli
 """
 
+import sys
 from pathlib import Path
 
 import db
@@ -22,10 +23,17 @@ def format_summary(summary: dict) -> str:
             f"{b}={n}" for b, n in summary["genre_spread"].items()
         ),
     ]
+    if summary.get("caption"):
+        lines.append("\nCaption:\n" + summary["caption"])
     return "\n".join(lines)
 
 
 def main() -> None:
+    # Captions can contain emoji; keep printing safe on a cp1252 Windows console.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
     out_root = Path("output") / "slides"
     with db.connect() as conn:
         summary = build_slideshow(conn, out_root)

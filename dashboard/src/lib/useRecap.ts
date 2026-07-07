@@ -13,6 +13,7 @@ import {
   savePlaylist,
   searchSpotify,
   refreshLogger,
+  regenerateCaption as regenerateCaptionApi,
   MissingCoverError,
   UnconfirmedCoverError,
 } from "./api";
@@ -118,6 +119,8 @@ export interface RecapState {
   slideCount: number;
   leftover: number;
   generate: () => void;
+  regeneratingCaption: boolean;
+  regenerateCaption: () => void;
   layout: "2x2" | "3x3" | "4x4";
   setLayout: (v: "2x2" | "3x3" | "4x4") => void;
 
@@ -631,6 +634,27 @@ export function useRecap(): RecapState {
     slideHeight,
   ]);
 
+  const [regeneratingCaption, setRegeneratingCaption] = useState(false);
+
+  const regenerateCaption = useCallback(async () => {
+    if (selectedTracks.length === 0) return;
+    setRegeneratingCaption(true);
+    setError(null);
+    try {
+      const caption = await regenerateCaptionApi(
+        apiBase,
+        selectedTracks,
+        includeCover ? coverTitle : null,
+      );
+      // Merge the fresh caption into the existing summary so the gallery updates.
+      setSummary((prev) => (prev ? { ...prev, caption } : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to regenerate caption.");
+    } finally {
+      setRegeneratingCaption(false);
+    }
+  }, [apiBase, selectedTracks, includeCover, coverTitle]);
+
   const uploadArtFor = useCallback(
     async (track: Candidate, file: File) => {
       setError(null);
@@ -970,6 +994,8 @@ export function useRecap(): RecapState {
     slideCount,
     leftover,
     generate,
+    regeneratingCaption,
+    regenerateCaption,
     layout,
     setLayout,
     progress,

@@ -24,6 +24,25 @@ export async function fetchCandidates(
   return data.candidates ?? [];
 }
 
+// Re-roll just the TikTok caption for a set of tracks (no slide rendering).
+export async function regenerateCaption(
+  apiBase: string,
+  tracks: Candidate[],
+  coverTitle: string | null,
+): Promise<string> {
+  const resp = await fetch(`${apiBase}/api/caption`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tracks, cover_title: coverTitle }),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to regenerate caption (HTTP ${resp.status}).`);
+  }
+  const data = await resp.json();
+  return data.caption ?? "";
+}
+
 export interface GeneratePayload {
   tracks: Candidate[];
   cover_title: string | null;

@@ -128,6 +128,8 @@ class DashboardHandlerHelper:
             self.handle_post_spotify_search()
         elif parsed.path == "/api/logger/refresh":
             self.handle_post_logger_refresh()
+        elif parsed.path == "/api/caption":
+            self.handle_post_caption()
         else:
             self.send_error(404, "Not Found")
 
@@ -648,6 +650,32 @@ class DashboardHandlerHelper:
             self._send_json(200, {"tracks": tracks})
         except PlaylistParseError as e:
             self._send_json(400, {"error": str(e)})
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
+
+    def handle_post_caption(self):
+        """(Re)generate just the TikTok caption for a set of tracks (no render).
+
+        Lets the dashboard re-roll the AI caption from a phone without rebuilding
+        slides. Returns {"caption": str}. Falls back to the deterministic caption
+        internally if the local model is unavailable, so this never errors on
+        that account.
+        """
+        payload = self._read_json_body()
+        if payload is None:
+            self._send_json(400, {"error": "Invalid JSON payload"})
+            return
+
+        tracks = payload.get("tracks", [])
+        cover_title = payload.get("cover_title") or None
+        if not tracks:
+            self._send_json(400, {"error": "No tracks provided for caption."})
+            return
+
+        try:
+            from slideshow.caption import generate_caption
+            caption = generate_caption(tracks, cover_title=cover_title)
+            self._send_json(200, {"caption": caption})
         except Exception as e:
             self._send_json(500, {"error": str(e)})
 

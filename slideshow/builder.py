@@ -16,6 +16,20 @@ from render.card import render_card
 from render.collage import collage
 
 
+def _save_caption(out_dir: Path, caption: str) -> None:
+    """Write the caption next to the slides as copy-paste-ready caption.txt.
+
+    UTF-8 so emojis survive. Best-effort: never fails a build.
+    """
+    if not caption:
+        return
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "caption.txt").write_text(caption, encoding="utf-8")
+    except OSError:
+        pass
+
+
 class ProgressEmitter:
     """Thread-safe progress callback that emits stage/percent/eta events."""
 
@@ -482,6 +496,10 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
         if playlist_url:
             summary["playlist_url"] = playlist_url
 
+    # Generate TikTok-ready caption with hashtags
+    summary["caption"] = generate_caption(rendered, cover_title=cover_title)
+    _save_caption(out_dir, summary["caption"])
+
     return summary
 
 
@@ -553,5 +571,6 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
 
     # Generate TikTok-ready caption with hashtags
     summary["caption"] = generate_caption(rendered, cover_title=cover_title)
+    _save_caption(out_dir, summary["caption"])
 
     return summary

@@ -18,6 +18,7 @@ Records every Spotify play, picks the best/most-underrated tracks from a rolling
 | Last.fm history import + genre enrichment | `ingest/` |
 | Album-art card renderer (Pillow) | `render/` |
 | Slideshow builder with genre variety, freshness scoring, and artist/album dispersion | `slideshow/builder.py` |
+| **AI captions** — local LLM writes the caption in your voice; hashtags added deterministically (max 5) | `slideshow/llm_caption.py` + `slideshow/caption.py` |
 | **Web dashboard** — browse candidates, pick tracks, tune cover settings, generate slides | `dashboard/` + `dashboard_server.py` |
 | **Screenshot OCR** — upload a Spotify queue screenshot → tracks auto-detected and added to picks | `slideshow/ocr.py` + `/api/ocr` |
 | Album art from Spotify (primary) → iTunes fallback with per-track confirm/deny UI | `slideshow/art_resolve.py` |
@@ -205,6 +206,49 @@ Output: `output/slides/<today>/slide_1.png`, `slide_2.png`, … (1080 × 1920 ea
 - **Freshness:** tracks posted in the last ~14 days are penalized.
 - **Dispersion:** no slide has more than 1 track from the same artist or album.
 - **Count:** targets 16 tracks (minimum 12), chunked into groups of 4.
+
+Each build also produces a TikTok-ready `caption` (see below).
+
+---
+
+## AI captions
+
+Every slideshow gets a caption via `slideshow/caption.py`:
+
+1. A small **local** model (default `llama3.2:1b` through [Ollama](https://ollama.com))
+   writes the caption *text* in your voice, using your past captions in
+   `data/captions.txt` as few-shot examples. Rotation-style posts are prioritized
+   as examples.
+2. Hashtags are then appended **deterministically** from the tracks' genre
+   buckets (+ a rotation-flavored filler pool) — so the **max-5-hashtags** and
+   **<300-char** rules can never be broken by the model.
+3. If Ollama is unavailable (or the model returns junk), it silently falls back
+   to an on-brand deterministic caption. A build never fails on captions.
+
+The caption is saved as `caption.txt` next to the slides and (in the dashboard)
+shown in a copyable box with a **Regenerate** button to re-roll the AI text —
+so the whole flow works from your phone. See `POST /api/caption`
+(`{tracks, cover_title}` → `{caption}`) for the re-roll endpoint.
+
+**Setup:** install Ollama, then `ollama pull llama3.2:1b`. The 1B model was chosen
+for a low-RAM host that also runs Homebridge — it memory-maps the weights
+(~negligible committed RAM) and `keep_alive=0` unloads it right after each call.
+Each caption call is then a ~15s cold start. If you re-roll captions a lot from
+the dashboard, set `CAPTION_KEEP_ALIVE=2m` so successive re-rolls take ~2–3s
+(the model stays resident for 2 min, then unloads).
+
+**Config (all optional env vars):**
+
+| Var | Default | Purpose |
+|---|---|---|
+| `CAPTION_AI` | `1` | Set `0`/`false` to disable the LLM and always use the deterministic caption. |
+| `CAPTION_MODEL` | `llama3.2:1b` | Any pulled Ollama model. |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Where the Ollama daemon listens. |
+| `CAPTION_KEEP_ALIVE` | `0` | Set e.g. `5m` to keep the model warm (faster, more RAM). |
+| `CAPTION_TIMEOUT` | `60` | Seconds before giving up and falling back. |
+
+Add more example captions to `data/captions.txt` (one per line, blank-line-separated
+for multi-line ones) to steer the voice.
 
 ---
 
