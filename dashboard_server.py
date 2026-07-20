@@ -15,6 +15,9 @@ from render.art import find_override_art
 import config
 import db
 
+START_TIME = time.time()
+
+
 
 class RateLimiter:
     """Thread-safe per-IP token bucket.
@@ -187,6 +190,10 @@ class DashboardHandlerHelper:
             self.handle_get_recap_slides(parsed)
         elif parsed.path == "/api/health":
             self.handle_get_health()
+        elif parsed.path == "/api/system-status":
+            self.handle_get_system_status()
+        elif parsed.path == "/api/logs":
+            self.handle_get_logs(parsed)
         elif parsed.path == "/api/bidaily/history":
             self.handle_get_bidaily_history()
         elif parsed.path == "/api/bidaily/status":
@@ -1217,6 +1224,100 @@ class DashboardHandlerHelper:
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps({"recap_id": recap_id, "slides": slides}).encode("utf-8"))
+
+    def handle_get_system_status(self):
+        """Get uptime, Windows services states, and scheduled task statuses."""
+        import subprocess
+        import csv
+        import io
+
+        def get_service_state(service_name):
+            try:
+                res = subprocess.run(
+                    ["sc.exe", "query", service_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if res.returncode == 0:
+                    for line in res.stdout.splitlines():
+                        if "STATE" in line:
+                            parts = line.split(":")
+                            if len(parts) > 1:
+                                val = parts[1].strip()
+                                status_parts = val.split()
+                                if len(status_parts) > 1:
+                                    return status_parts[1]
+                                return val
+            except Exception as e:
+                return f"ERROR: {e}"
+            return "UNKNOWN"
+
+        def get_task_status(task_name):
+            try:
+                res = subprocess.run(
+                    ["schtasks", "/query", "/tn", task_name, "/fo", "CSV"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if res.returncode == 0:
+                    reader = csv.DictReader(io.StringIO(res.stdout))
+                    row = next(reader, None)
+                    if row:
+                        return {
+                            "next_run": row.get("Next Run Time"),
+                            "status": row.get("Status"),
+                        }
+            except Exception as e:
+                return {"status": "ERROR", "error": str(e)}
+            return {"status": "UNKNOWN"}
+
+        uptime = time.time() - START_TIME
+
+        payload = {
+            "uptime": uptime,
+            "services": {
+                "ttspot-dashboard": get_service_state("ttspot-dashboard"),
+                "ollama": get_service_state("ollama"),
+            },
+            "tasks": {
+                "ttspot-Watchdog": get_task_status("ttspot-Watchdog"),
+                "ttspot-Slideshow": get_task_status("ttspot-Slideshow"),
+                "ttspot-Logger": get_task_status("ttspot-Logger"),
+                "ttspot-GenreRefresh": get_task_status("ttspot-GenreRefresh"),
+            },
+            "logs": ["dashboard", "watchdog", "ollama_service", "run_bidaily", "logger", "enrich", "service"],
+        }
+        self._send_json(200, payload)
+
+    def handle_get_logs(self, parsed):
+        """Read the last 200 lines of a selected log file."""
+        import re
+        from collections import deque
+        query = parse_qs(parsed.query)
+        log_name = query.get("name", ["dashboard"])[0]
+
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", log_name):
+            self._send_json(400, {"error": "Invalid log name"})
+            return
+
+        log_file = Path("data") / "logs" / f"{log_name}.log"
+        if not log_file.exists():
+            log_file = Path("data") / "logs" / log_name
+            if not log_file.exists():
+                self._send_json(404, {"error": f"Log file '{log_name}' not found"})
+                return
+
+        try:
+            with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                lines = list(deque(f, 200))
+            self._send_json(200, {
+                "name": log_name,
+                "lines": [line.rstrip("\r\n") for line in lines]
+            })
+        except Exception as e:
+            self._send_json(500, {"error": f"Error reading log file: {e}"})
 
     def handle_get_health(self):
         """Report backend subsystem health for the dashboard's status monitor.

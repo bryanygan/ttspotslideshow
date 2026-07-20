@@ -28,9 +28,8 @@ Run once in an **elevated** PowerShell from the repo root:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\deploy\register_tasks.ps1
 ```
-Registers: bi-daily slideshow, 3-hourly Spotify logger, weekly genre refresh, and
-the dashboard backend on boot. (Or set them up by hand in Task Scheduler — see
-README. Key rule: **Start in = repo root**.)
+Registers: bi-daily slideshow, 3-hourly Spotify logger, and weekly genre refresh. (The dashboard backend and Ollama run as auto-restarting Windows Services via NSSM, and are monitored by the watchdog task registered via `.\deploy\register_watchdog.ps1` — see README).
+
 
 ## 3. Cloudflare Pages (frontend)
 Workers & Pages → Create → Pages → Connect to Git → this repo. Build settings:
