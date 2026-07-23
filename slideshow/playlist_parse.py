@@ -165,7 +165,7 @@ def parse_spotify_playlist(playlist_id: str, conn=None) -> list[dict]:
                 break
 
             for item in items:
-                track = item.get("track") or {}
+                track = item.get("track") or item.get("item") or {}
                 # Skip local files / podcast episodes / unavailable rows.
                 if not track or track.get("type") != "track":
                     continue
