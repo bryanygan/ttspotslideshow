@@ -11,18 +11,22 @@ This is intended to run as a scheduled task (e.g. via Windows Task Scheduler).
 
 import argparse
 import logging
+import sys
+import traceback
 from pathlib import Path
 
 import config
 import db
 from logger import log_recent_plays
+from notify import send_alert
 from ingest.lastfm_import import import_recent_from_api
 from ingest.enrich_popularity import enrich_all_popularity
-from slideshow.builder import build_slideshow
+from slideshow.builder import MissingCoverError, UnconfirmedCoverError, build_slideshow
 from slideshow.cli import format_summary
 from logsetup import setup_logging
 
 LOG = logging.getLogger("run_bidaily")
+MAX_BUILD_ATTEMPTS = 3
 
 
 def run_pipeline(
@@ -90,8 +94,26 @@ def run_pipeline(
     # 4. Build slideshow
     LOG.info("Building slideshow...")
     out_path = Path(out_root)
-    with db.connect() as conn:
-        slide_summary = build_slideshow(conn, out_path)
+    excluded: set[str] = set()
+    for attempt in range(1, MAX_BUILD_ATTEMPTS + 1):
+        try:
+            with db.connect() as conn:
+                slide_summary = build_slideshow(
+                    conn, out_path, allow_itunes_covers=True, exclude_keys=excluded
+                )
+            break
+        except MissingCoverError as e:
+            new_keys = {t["track_key"] for t in e.missing_tracks if t.get("track_key")}
+            if not new_keys or attempt == MAX_BUILD_ATTEMPTS:
+                raise
+            names = ", ".join(f"{t['artist']} - {t['title']}" for t in e.missing_tracks)
+            LOG.warning(
+                "Attempt %d: no cover art for %s; dropping them and retrying.", attempt, names
+            )
+            excluded |= new_keys
+
+    if slide_summary.get("slide_count", 0) == 0:
+        raise RuntimeError("Slideshow built zero slides - not enough usable tracks.")
     LOG.info(format_summary(slide_summary))
 
 
@@ -122,12 +144,24 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging("run_bidaily")
-    run_pipeline(
-        skip_spotify=args.skip_spotify,
-        skip_lastfm=args.skip_lastfm,
-        skip_popularity=args.skip_popularity,
-        out_root=args.out_dir,
-    )
+    try:
+        run_pipeline(
+            skip_spotify=args.skip_spotify,
+            skip_lastfm=args.skip_lastfm,
+            skip_popularity=args.skip_popularity,
+            out_root=args.out_dir,
+        )
+    except (MissingCoverError, UnconfirmedCoverError) as e:
+        LOG.error("Slideshow not built: %s", e)
+        tracks = getattr(e, "missing_tracks", None) or getattr(e, "unconfirmed_tracks", [])
+        details = "\n".join(f"{t.get('artist')} - {t.get('title')}" for t in tracks)
+        LOG.error("Cover problems:\n%s", details)
+        send_alert("Bi-daily slideshow not built: cover art problem", f"{e}\n{details}")
+        sys.exit(2)
+    except Exception:
+        LOG.exception("Bi-daily run failed")
+        send_alert("Bi-daily slideshow FAILED", traceback.format_exc())
+        sys.exit(1)
 
 
 if __name__ == "__main__":

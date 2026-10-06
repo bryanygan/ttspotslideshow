@@ -342,26 +342,34 @@ Run weekly to gradually upgrade Last.fm genres to richer Spotify genres without 
 
 ---
 
-## Reliability — run the backend as a service
+## Reliability — run the backend and Ollama as services
 
-The dashboard backend is long-running, so run it as an **auto-restarting Windows
-service** via [NSSM](https://nssm.cc/) rather than a Task Scheduler task. (A
-scheduled task's 72-hour execution limit silently kills the server, and a
-boot-only trigger never restarts it — this caused a multi-day outage.)
+The dashboard backend and the Ollama server are long-running, so they should run as **auto-restarting Windows services** via [NSSM](https://nssm.cc/) rather than user-session startup applications or fragile Task Scheduler tasks. This ensures they start automatically on system boot (before user login) and restart instantly if they crash.
 
+### 1. Run the Dashboard Backend as a Service
 ```powershell
 # One-time, from an elevated PowerShell:
 powershell -ExecutionPolicy Bypass -File scripts\install_dashboard_service.ps1
 ```
+This installs the `ttspot-dashboard` service, disables the old `ttspot-Dashboard` task, and takes over port 8000. `scripts\uninstall_dashboard_service.ps1` reverses it.
 
-This installs the `ttspot-dashboard` service (auto-start at boot, **restart on
-any crash**, runs before login), disables the old `ttspot-Dashboard` task, and
-takes over port 8000. Manage it with `nssm status/stop/start ttspot-dashboard`
-or the Services app. `scripts\uninstall_dashboard_service.ps1` reverses it.
+### 2. Run Ollama as a Service
+```powershell
+# One-time, from an elevated PowerShell:
+powershell -ExecutionPolicy Bypass -File scripts\install_ollama_service.ps1
+```
+This installs the `ollama` service, configures it to load your user's pulled models (from `C:\Users\Admin\.ollama\models`), and disables the default user startup shortcut (renamed to `Ollama.lnk.disabled`) to prevent port conflicts when you log in. `scripts\uninstall_ollama_service.ps1` reverses it.
 
-The periodic jobs (`ttspot-Slideshow` bi-daily, logger) stay as Task Scheduler
-tasks — those are short-lived and now carry restart-on-failure so a transient
-error (e.g. a flaky album-art download) self-heals with a retry.
+### 3. Register the Watchdog Scheduled Task
+To ensure absolute reliability (e.g., if either the Dashboard or Ollama APIs hang or fail to respond despite their service status being "Running"), a watchdog scheduled task is provided:
+```powershell
+# One-time, from an elevated PowerShell:
+powershell -ExecutionPolicy Bypass -File deploy\register_watchdog.ps1
+```
+This registers the `ttspot-Watchdog` scheduled task running under the `NT AUTHORITY\SYSTEM` account. It checks the health APIs of the Dashboard and Ollama every 10 minutes and restarts their respective services automatically if they become unresponsive. Logs are kept in `data\logs\watchdog.log`.
+
+The periodic jobs (`ttspot-Slideshow` bi-daily, logger) stay as Task Scheduler tasks — those are short-lived and now carry restart-on-failure so a transient error (e.g. a flaky album-art download) self-heals with a retry.
+
 
 ---
 

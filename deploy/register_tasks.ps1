@@ -30,7 +30,10 @@ Write-Host "Python: $Python`n"
 $Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Limited
 
 function Register-Job($Name, $Arguments, $Trigger) {
-    $action = New-ScheduledTaskAction -Execute $Python -Argument $Arguments -WorkingDirectory $Repo
+    # Capture stdout/stderr per job so startup errors (before logging is set up) aren't lost.
+    $taskLog = Join-Path $Repo "data\logs\$Name.task.log"
+    $cmdArgs = "/c `"`"$Python`" $Arguments >> `"$taskLog`" 2>&1`""
+    $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $cmdArgs -WorkingDirectory $Repo
     if (Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) {
         Unregister-ScheduledTask -TaskName $Name -Confirm:$false
     }
@@ -50,9 +53,11 @@ Register-Job "ttspot-Logger" "logger.py" `
 Register-Job "ttspot-GenreRefresh" "-m ingest.enrich_cli --refresh" `
     (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 4:00AM)
 
-# D) Dashboard backend on boot (required for the remote dashboard to reach the PC)
-Register-Job "ttspot-Dashboard" "dashboard_server.py" `
-    (New-ScheduledTaskTrigger -AtStartup)
+# D) Dashboard backend on boot (retired in favor of the NSSM Windows service 'ttspot-dashboard')
+# Register-Job "ttspot-Dashboard" "dashboard_server.py" `
+#     (New-ScheduledTaskTrigger -AtStartup)
 
 Write-Host "`nDone. Manage these in Task Scheduler (names start with 'ttspot-')."
-Write-Host "Start the dashboard now without rebooting:  Start-ScheduledTask -TaskName ttspot-Dashboard"
+Write-Host "Note: ttspot-Dashboard scheduled task has been retired in favor of the auto-restarting Windows service."
+Write-Host "Start the dashboard service now:  Start-Service ttspot-dashboard"
+

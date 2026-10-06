@@ -5,6 +5,7 @@ import { PocketDJ } from "./options/pocket/PocketDJ";
 import { OcrScanner } from "./options/pocket/OcrScanner";
 import { PlaylistImporter } from "./options/pocket/PlaylistImporter";
 import { BiDailyPanel } from "./ui/BiDailyPanel";
+import { StatusPanel } from "./ui/StatusPanel";
 import { ConnectionBanner } from "./ui/ConnectionBanner";
 import { Sheet } from "./ui/Sheet";
 import { GearIcon, MusicIcon } from "./ui/icons";
@@ -15,7 +16,7 @@ function App() {
   const health = useHealth(r.apiBase);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tempApiBase, setTempApiBase] = useState(r.apiBase);
-  const [viewMode, setViewMode] = useState<"picker" | "ocr" | "playlist" | "bidaily">("picker");
+  const [viewMode, setViewMode] = useState<"picker" | "ocr" | "playlist" | "bidaily" | "status">("picker");
 
   // Sync tempApiBase when the settings sheet is opened
   useEffect(() => {
@@ -44,6 +45,7 @@ function App() {
                 { id: "bidaily", short: "Auto", full: "Bi-daily" },
                 { id: "ocr", short: "Scan", full: "Screenshot" },
                 { id: "playlist", short: "Playlist", full: "Playlist" },
+                { id: "status", short: "Status", full: "System Status" },
               ] as const
             ).map(({ id, short, full }) => (
               <button
@@ -82,6 +84,7 @@ function App() {
         )}
         {viewMode === "ocr" && <OcrScanner r={r} />}
         {viewMode === "playlist" && <PlaylistImporter r={r} />}
+        {viewMode === "status" && <StatusPanel apiBase={r.apiBase} />}
       </div>
 
       <Sheet

@@ -144,35 +144,53 @@ export function PocketDJ({ r }: { r: RecapState }) {
 
       <Sheet
         open={presetSheetOpen}
-        onClose={() => setPresetSheetOpen(false)}
-        title="✨ Smart Fill"
+        onClose={() => {
+          setPresetSheetOpen(false);
+          r.clearAiRecommendations();
+        }}
+        title={
+          r.aiRecommendations.length > 0
+            ? "🔮 AI DJ Selections"
+            : r.aiLoading
+            ? "🔮 Curation in progress"
+            : "✨ Smart Fill & AI DJ"
+        }
         panelClass="rounded-t-2xl border border-zinc-800 bg-zinc-950 text-zinc-100"
       >
-        <div className="flex flex-col gap-2 pb-2">
-          <p className="mb-1 text-xs text-zinc-500">
-            Auto-picks {r.quickSelectCount} tracks from the current timeframe.
-          </p>
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => {
-                setPresetSheetOpen(false);
-                handleSelectPreset(preset.id);
-              }}
-              className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 text-left transition-colors hover:border-violet-500/40 hover:bg-white/[0.06] active:bg-violet-500/10 cursor-pointer"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-lg">
-                {preset.emoji}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold text-white">{preset.label}</span>
-                <span className="block truncate text-xs text-zinc-400">{preset.hint}</span>
-              </span>
-              <ChevronRightIcon className="h-4 w-4 shrink-0 text-zinc-600" />
-            </button>
-          ))}
-        </div>
+        {r.aiLoading ? (
+          <AiDjLoading />
+        ) : r.aiRecommendations.length > 0 ? (
+          <AiDjRecommendations r={r} onClose={() => setPresetSheetOpen(false)} />
+        ) : (
+          <div className="flex flex-col gap-2 pb-2">
+            <AiDjInput r={r} />
+            <div className="border-t border-white/5 my-2 pt-3">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-500 block mb-2.5">Or select a preset</span>
+              <div className="flex flex-col gap-2">
+                {PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      setPresetSheetOpen(false);
+                      handleSelectPreset(preset.id);
+                    }}
+                    className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 text-left transition-colors hover:border-violet-500/40 hover:bg-white/[0.06] active:bg-violet-500/10 cursor-pointer"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-lg">
+                      {preset.emoji}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold text-white">{preset.label}</span>
+                      <span className="block truncate text-xs text-zinc-400">{preset.hint}</span>
+                    </span>
+                    <ChevronRightIcon className="h-4 w-4 shrink-0 text-zinc-600" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </Sheet>
 
       <TabBar tab={tab} setTab={setTab} pickCount={r.selectedKeys.size} />
@@ -1159,6 +1177,197 @@ function ItunesConfirmRow({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function AiDjInput({ r }: { r: RecapState }) {
+  const [prompt, setPrompt] = useState("");
+  const [count, setCount] = useState(r.quickSelectCount);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prompt.trim()) return;
+    r.runAiPicks(prompt.trim(), count);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="mb-2 flex flex-col gap-3 rounded-2xl border border-violet-500/20 bg-violet-600/5 p-4 shadow-inner">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🔮</span>
+        <span className="text-xs font-bold uppercase tracking-wider text-violet-300">AI DJ Copilot</span>
+      </div>
+      <p className="text-[11px] leading-relaxed text-zinc-400">
+        Type a custom vibe, era, or activity, and the AI will select tracks matching it from your current list.
+      </p>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="e.g. summer 2016 vibes, slow day at work..."
+          className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none"
+        />
+        <div className="flex shrink-0 items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5">
+          <span className="text-[10px] uppercase font-bold text-zinc-500">Pick</span>
+          <select
+            value={count}
+            onChange={(e) => setCount(parseInt(e.target.value))}
+            className="bg-transparent text-xs font-bold text-zinc-300 focus:outline-none cursor-pointer"
+          >
+            {[4, 8, 12, 16, 20].map((n) => (
+              <option key={n} value={n} className="bg-zinc-950 text-zinc-300">{n}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <button
+        type="submit"
+        disabled={!prompt.trim() || r.aiLoading}
+        className="w-full rounded-xl bg-violet-600 py-2.5 text-xs font-bold text-white transition-all hover:bg-violet-500 active:scale-98 disabled:opacity-40 disabled:pointer-events-none cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-violet-950/20"
+      >
+        <span>🔮 Select matching songs</span>
+      </button>
+    </form>
+  );
+}
+
+function AiDjLoading() {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center gap-4">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-500/10 text-violet-400">
+        <svg className="h-6 w-6 animate-spin" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+      </div>
+      <h3 className="font-display text-sm font-bold text-zinc-200">AI is curating...</h3>
+      <p className="max-w-xs text-xs text-zinc-500 leading-relaxed">
+        Scanning your tracks and matching genres, moods, and vibes to your prompt. This might take 15-30 seconds.
+      </p>
+    </div>
+  );
+}
+
+function AiDjRecommendations({ r, onClose }: { r: RecapState; onClose: () => void }) {
+  const acceptedCount = r.aiRecommendations.filter((rec) => rec.status === "accepted").length;
+
+  const handleConfirm = () => {
+    r.confirmAiPicks();
+    onClose();
+  };
+
+  return (
+    <div className="flex flex-col gap-4 pb-4 max-h-[70vh] overflow-y-auto pr-1">
+      <div className="flex flex-col gap-1">
+        <p className="text-xs text-zinc-400 leading-relaxed">
+          The AI picked these tracks from your history. Tap <span className="text-rose-400 font-bold">✕</span> to reject/exclude or <span className="text-emerald-400 font-bold">✓</span> to include.
+        </p>
+      </div>
+
+      {r.aiError && (
+        <div className="rounded-xl bg-rose-500/10 border border-rose-500/20 p-3.5 text-xs text-rose-400">
+          {r.aiError}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2.5">
+        {r.aiRecommendations.map((rec) => {
+          const isAccepted = rec.status === "accepted";
+          const isRejected = rec.status === "rejected";
+          
+          return (
+            <div
+              key={rec.track.track_key}
+              className={`flex items-start gap-3 rounded-2xl border p-3.5 transition-all duration-200 ${
+                isAccepted
+                  ? "border-emerald-500/30 bg-emerald-500/[0.03] shadow-sm shadow-emerald-950/10"
+                  : isRejected
+                  ? "border-zinc-800 bg-black/40 opacity-30"
+                  : "border-white/5 bg-white/[0.02]"
+              }`}
+            >
+              {/* Album Art */}
+              <img
+                src={resolveArt(r.apiBase, rec.track.album_art_url)}
+                alt=""
+                className="h-12 w-12 shrink-0 rounded-xl bg-zinc-800 object-cover shadow"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.visibility = "hidden";
+                }}
+              />
+
+              {/* Track Details */}
+              <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+                <span className="truncate text-sm font-semibold text-white leading-tight flex-1">
+                  {rec.track.title}
+                </span>
+                <span className="truncate text-xs text-zinc-400">
+                  {rec.track.artist}
+                </span>
+                {rec.reason && (
+                  <p className="text-[11px] leading-snug text-violet-300/85 mt-1.5 italic font-medium">
+                    🔮 {rec.reason}
+                  </p>
+                )}
+              </div>
+
+              {/* Accept / Reject Buttons */}
+              <div className="flex shrink-0 gap-1.5 self-center">
+                <button
+                  type="button"
+                  onClick={() => r.setAiRecommendationStatus(rec.track.track_key, "accepted")}
+                  aria-label="Accept track"
+                  className={`flex h-8 w-8 items-center justify-center rounded-full border transition-all active:scale-90 cursor-pointer ${
+                    isAccepted
+                      ? "bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-900/30"
+                      : "border-zinc-700 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-zinc-400 hover:text-emerald-300"
+                  }`}
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => r.setAiRecommendationStatus(rec.track.track_key, "rejected")}
+                  aria-label="Reject track"
+                  className={`flex h-8 w-8 items-center justify-center rounded-full border transition-all active:scale-90 cursor-pointer ${
+                    isRejected
+                      ? "bg-rose-500 border-rose-500 text-white shadow-md shadow-rose-900/30"
+                      : "border-zinc-700 hover:border-rose-500/50 hover:bg-rose-500/10 text-zinc-400 hover:text-rose-300"
+                  }`}
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Action Footer */}
+      <div className="sticky bottom-0 bg-zinc-950 pt-4 mt-2 border-t border-white/5 flex gap-3">
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={acceptedCount === 0}
+          className="flex-1 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 py-3.5 text-xs font-bold text-white shadow-lg shadow-violet-950/40 hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-40 disabled:pointer-events-none active:scale-98 transition-all cursor-pointer"
+        >
+          Confirm Picks ({acceptedCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            r.clearAiRecommendations();
+          }}
+          className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-3.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
+        >
+          Reset
+        </button>
+      </div>
     </div>
   );
 }

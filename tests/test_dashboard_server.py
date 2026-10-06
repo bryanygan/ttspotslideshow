@@ -48,10 +48,12 @@ class DummyHandler(dashboard_server.DashboardHandlerHelper):
 
 
 def test_get_candidates_endpoint(monkeypatch):
+    import time
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     db.migrate(conn)
     # Insert a play
+    now_unix = int(time.time())
     db.insert_lastfm_play(
         conn,
         track_id="track1",
@@ -59,7 +61,7 @@ def test_get_candidates_endpoint(monkeypatch):
         artist="Artist A",
         album_art_url="http://art",
         played_at="2026-06-25T00:00:00Z",
-        played_at_unix=1782350000,
+        played_at_unix=now_unix - 3 * 86400,
     )
     from contextlib import contextmanager
     @contextmanager
@@ -82,13 +84,15 @@ def test_get_candidates_endpoint(monkeypatch):
 
 
 def test_get_candidates_uses_cached_popularity(monkeypatch):
+    import time
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     db.migrate(conn)
+    now_unix = int(time.time())
     db.insert_lastfm_play(
         conn, track_id="track1", name="Song A", artist="Artist A",
         album_art_url="http://art", played_at="2026-06-25T00:00:00Z",
-        played_at_unix=1782350000,
+        played_at_unix=now_unix - 3 * 86400,
     )
     db.upsert_track_popularity(
         conn, track_key="artist a\tsong a", listeners=900, popularity=33,

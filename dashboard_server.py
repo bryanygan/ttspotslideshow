@@ -15,6 +15,9 @@ from render.art import find_override_art
 import config
 import db
 
+START_TIME = time.time()
+
+
 
 class RateLimiter:
     """Thread-safe per-IP token bucket.
@@ -187,6 +190,10 @@ class DashboardHandlerHelper:
             self.handle_get_recap_slides(parsed)
         elif parsed.path == "/api/health":
             self.handle_get_health()
+        elif parsed.path == "/api/system-status":
+            self.handle_get_system_status()
+        elif parsed.path == "/api/logs":
+            self.handle_get_logs(parsed)
         elif parsed.path == "/api/bidaily/history":
             self.handle_get_bidaily_history()
         elif parsed.path == "/api/bidaily/status":
@@ -220,6 +227,8 @@ class DashboardHandlerHelper:
             self.handle_post_logger_refresh()
         elif parsed.path == "/api/caption":
             self.handle_post_caption()
+        elif parsed.path == "/api/picks/ai":
+            self.handle_post_picks_ai()
         elif parsed.path == "/api/bidaily/run":
             self.handle_post_bidaily_run()
         else:
@@ -771,6 +780,116 @@ class DashboardHandlerHelper:
         except Exception as e:
             self._send_json(500, {"error": str(e)})
 
+    def handle_post_picks_ai(self):
+        """Use Ollama to select songs based on a vibe/theme prompt."""
+        payload = self._read_json_body()
+        if payload is None:
+            self._send_json(400, {"error": "Invalid JSON payload"})
+            return
+
+        prompt = (payload.get("prompt") or "").strip()
+        try:
+            count = min(max(int(payload.get("count", 12)), 1), 50)
+        except (TypeError, ValueError):
+            self._send_json(400, {"error": "'count' must be an integer"})
+            return
+        candidates = payload.get("candidates", [])
+
+        if not prompt:
+            self._send_json(400, {"error": "Missing 'prompt' (vibe/theme)"})
+            return
+
+        # If candidates list is empty, load from database (recent 300 unique songs)
+        if not candidates:
+            try:
+                with db.connect() as conn:
+                    candidates = db.recent_track_candidates(conn, 300)
+            except Exception as e:
+                self._send_json(500, {"error": f"Failed to fetch candidates: {e}"})
+                return
+
+        # Restrict the track pool to the first 80 items to avoid overloading local model context
+        pool_limit = 80
+        track_pool = candidates[:pool_limit]
+
+        try:
+            picks = self._ai_pick_songs(prompt, count, track_pool)
+            self._send_json(200, {"picks": picks})
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
+
+    def _ai_pick_songs(self, prompt: str, count: int, tracks: list[dict]) -> list[dict]:
+        import urllib.request
+        import urllib.error
+        from slideshow.llm_caption import OLLAMA_HOST, CAPTION_MODEL, KEEP_ALIVE, REQUEST_TIMEOUT
+        
+        # Format the list of tracks for the LLM
+        track_lines = []
+        for i, t in enumerate(tracks):
+            genre = t.get("primary_bucket") or t.get("artist_genre") or "unknown"
+            track_lines.append(f"Track {i+1}: {t['artist']} - {t['title']} (Genre: {genre})")
+        track_list_str = "\n".join(track_lines)
+
+        prompt_text = (
+            f"You are a music playlist curator assistant. Your task is to select songs from the provided list that best fit the prompt: '{prompt}'.\n"
+            f"For each song you select, you MUST output a single line in this exact format: 'Select: [track number] | Reason: [one short sentence why it fits]'\n"
+            "Example output lines:\n"
+            "Select: 3 | Reason: Upbeat energy perfect for summer road trips\n"
+            "Select: 14 | Reason: Relaxing melody ideal for focus or a slow day\n\n"
+            "Rules:\n"
+            f"- Select up to {count} songs. Do not select more than {count} songs.\n"
+            "- Only select songs that actually exist in the list below.\n"
+            "- Do not include any other text, greetings, explanation, markdown backticks, or intro/outro lines. Just list the selections line-by-line.\n\n"
+            f"List of available songs:\n{track_list_str}\n\n"
+            "Write your selections:"
+        )
+
+        payload = {
+            "model": CAPTION_MODEL,
+            "prompt": prompt_text,
+            "stream": False,
+            "keep_alive": KEEP_ALIVE,
+            "options": {"temperature": 0.3, "num_predict": 500},
+        }
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{OLLAMA_HOST}/api/generate",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        timeout = max(float(REQUEST_TIMEOUT), 90.0)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+                response_text = body.get("response") or ""
+        except Exception as e:
+            raise RuntimeError(f"Ollama request failed: {e}")
+
+        # Parse response
+        selections = []
+        seen_keys = set()
+        for line in response_text.splitlines():
+            match = re.search(r"Select:\s*(\d+)\s*(?:\||:|-)\s*Reason:\s*(.*)", line, re.IGNORECASE)
+            if match:
+                idx = int(match.group(1)) - 1
+                reason = match.group(2).strip()
+                if 0 <= idx < len(tracks):
+                    track = tracks[idx]
+                    track_key = track.get("track_key")
+                    if track_key not in seen_keys:
+                        seen_keys.add(track_key)
+                        selections.append({
+                            "track": track,
+                            "reason": reason
+                        })
+                        if len(selections) >= count:
+                            break
+
+        return selections
+
     def handle_post_playlist_save(self):
         """Save selected tracks back to a new or existing Spotify playlist."""
         payload = self._read_json_body()
@@ -1109,6 +1228,100 @@ class DashboardHandlerHelper:
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps({"recap_id": recap_id, "slides": slides}).encode("utf-8"))
+
+    def handle_get_system_status(self):
+        """Get uptime, Windows services states, and scheduled task statuses."""
+        import subprocess
+        import csv
+        import io
+
+        def get_service_state(service_name):
+            try:
+                res = subprocess.run(
+                    ["sc.exe", "query", service_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if res.returncode == 0:
+                    for line in res.stdout.splitlines():
+                        if "STATE" in line:
+                            parts = line.split(":")
+                            if len(parts) > 1:
+                                val = parts[1].strip()
+                                status_parts = val.split()
+                                if len(status_parts) > 1:
+                                    return status_parts[1]
+                                return val
+            except Exception as e:
+                return f"ERROR: {e}"
+            return "UNKNOWN"
+
+        def get_task_status(task_name):
+            try:
+                res = subprocess.run(
+                    ["schtasks", "/query", "/tn", task_name, "/fo", "CSV"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if res.returncode == 0:
+                    reader = csv.DictReader(io.StringIO(res.stdout))
+                    row = next(reader, None)
+                    if row:
+                        return {
+                            "next_run": row.get("Next Run Time"),
+                            "status": row.get("Status"),
+                        }
+            except Exception as e:
+                return {"status": "ERROR", "error": str(e)}
+            return {"status": "UNKNOWN"}
+
+        uptime = time.time() - START_TIME
+
+        payload = {
+            "uptime": uptime,
+            "services": {
+                "ttspot-dashboard": get_service_state("ttspot-dashboard"),
+                "ollama": get_service_state("ollama"),
+            },
+            "tasks": {
+                "ttspot-Watchdog": get_task_status("ttspot-Watchdog"),
+                "ttspot-Slideshow": get_task_status("ttspot-Slideshow"),
+                "ttspot-Logger": get_task_status("ttspot-Logger"),
+                "ttspot-GenreRefresh": get_task_status("ttspot-GenreRefresh"),
+            },
+            "logs": ["dashboard", "watchdog", "ollama_service", "run_bidaily", "logger", "enrich", "service"],
+        }
+        self._send_json(200, payload)
+
+    def handle_get_logs(self, parsed):
+        """Read the last 200 lines of a selected log file."""
+        import re
+        from collections import deque
+        query = parse_qs(parsed.query)
+        log_name = query.get("name", ["dashboard"])[0]
+
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", log_name):
+            self._send_json(400, {"error": "Invalid log name"})
+            return
+
+        log_file = Path("data") / "logs" / f"{log_name}.log"
+        if not log_file.exists():
+            log_file = Path("data") / "logs" / log_name
+            if not log_file.exists():
+                self._send_json(404, {"error": f"Log file '{log_name}' not found"})
+                return
+
+        try:
+            with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                lines = list(deque(f, 200))
+            self._send_json(200, {
+                "name": log_name,
+                "lines": [line.rstrip("\r\n") for line in lines]
+            })
+        except Exception as e:
+            self._send_json(500, {"error": f"Error reading log file: {e}"})
 
     def handle_get_health(self):
         """Report backend subsystem health for the dashboard's status monitor.

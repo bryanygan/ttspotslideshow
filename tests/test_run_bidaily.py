@@ -33,7 +33,7 @@ def test_run_pipeline_orchestration(monkeypatch, tmp_path):
     # Mock build_slideshow
     build_called = []
 
-    def fake_build_slideshow(conn, out_path):
+    def fake_build_slideshow(conn, out_path, **kwargs):
         build_called.append(out_path)
         return {
             "track_count": 4,
@@ -81,9 +81,9 @@ def test_run_pipeline_skips(monkeypatch, tmp_path):
     monkeypatch.setattr(
         run_bidaily,
         "build_slideshow",
-        lambda conn, out_path: {
+        lambda conn, out_path, **k: {
             "track_count": 0,
-            "slide_count": 0,
+            "slide_count": 4,
             "genre_spread": {},
             "out_dir": str(out_path),
             "days_used": 2,

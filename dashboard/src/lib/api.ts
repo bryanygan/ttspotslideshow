@@ -421,3 +421,29 @@ export async function fetchRecapSlides(
   const data = await resp.json();
   return data.slides ?? [];
 }
+
+export interface AiPickResult {
+  track: Candidate;
+  reason: string;
+}
+
+// Fetch AI song picks based on a custom vibe prompt and current candidates pool.
+export async function fetchAiPicks(
+  apiBase: string,
+  prompt: string,
+  count: number,
+  candidates: Candidate[],
+): Promise<AiPickResult[]> {
+  const resp = await fetch(`${apiBase}/api/picks/ai`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, count, candidates }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `AI selection failed (HTTP ${resp.status}).`);
+  }
+  const data = await resp.json();
+  return data.picks ?? [];
+}
+
