@@ -788,7 +788,11 @@ class DashboardHandlerHelper:
             return
 
         prompt = (payload.get("prompt") or "").strip()
-        count = int(payload.get("count", 12))
+        try:
+            count = min(max(int(payload.get("count", 12)), 1), 50)
+        except (TypeError, ValueError):
+            self._send_json(400, {"error": "'count' must be an integer"})
+            return
         candidates = payload.get("candidates", [])
 
         if not prompt:
