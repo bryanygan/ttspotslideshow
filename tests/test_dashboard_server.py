@@ -224,3 +224,28 @@ def test_get_slide_download_sets_attachment(monkeypatch, tmp_path):
     handler.handle_get_slide(urlparse("http://x/api/slides/2026-10-06/slide_1.png?download=1"))
     assert handler.response == 200
     assert _header(handler, "Content-Disposition") == 'attachment; filename="2026-10-06_slide_1.png"'
+
+
+def test_get_slide_handles_case_insensitive_extension(monkeypatch, tmp_path):
+    _real_slide(tmp_path, monkeypatch)
+    handler = DummyHandler()
+    handler.handle_get_slide(urlparse("http://x/api/slides/2026-10-06/slide_1.PNG"))
+    assert handler.response == 200
+    assert _header(handler, "Content-Type") == "image/png"
+
+
+def test_get_slide_concurrent_preview_requests(monkeypatch, tmp_path):
+    import threading
+    slides = _real_slide(tmp_path, monkeypatch)
+    h1 = DummyHandler()
+    h2 = DummyHandler()
+    t1 = threading.Thread(target=h1.handle_get_slide, args=(urlparse("http://x/api/slides/2026-10-06/slide_1.webp"),))
+    t2 = threading.Thread(target=h2.handle_get_slide, args=(urlparse("http://x/api/slides/2026-10-06/slide_1.thumb.webp"),))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    assert h1.response == 200
+    assert h2.response == 200
+    assert (slides / "slide_1.webp").exists()
+    assert (slides / "slide_1.thumb.webp").exists()

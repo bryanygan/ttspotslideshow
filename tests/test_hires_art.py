@@ -51,3 +51,15 @@ def test_write_previews_handles_rgba(tmp_path):
     png = tmp_path / "slide_2.png"
     write_previews(Image.new("RGBA", (200, 300)), png)
     assert Path(preview_paths(png)[0]).exists()
+
+
+def test_atomic_save_tolerates_open_reader_lock_on_windows(tmp_path):
+    from render.export import _atomic_save
+    dest = tmp_path / "slide.webp"
+    _atomic_save(Image.new("RGB", (100, 100), "red"), dest)
+    assert dest.exists()
+    # Open the file for reading (simulating a concurrent HTTP client)
+    with open(dest, "rb"):
+        # Overwriting while open should not crash and should clean up .tmp
+        _atomic_save(Image.new("RGB", (100, 100), "blue"), dest)
+    assert not list(tmp_path.glob("*.tmp"))

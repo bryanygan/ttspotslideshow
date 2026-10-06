@@ -14,7 +14,8 @@ export function SlideThumb({
   sizes?: string;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const failed = failedSrc === src;
   const thumb = slideThumbUrl(src);
   const preview = slidePreviewUrl(src);
 
@@ -28,7 +29,7 @@ export function SlideThumb({
       decoding="async"
       width={1080}
       height={1700}
-      onError={() => setFailed(true)}
+      onError={() => setFailedSrc(src)}
       className={`h-auto w-full ${className}`}
     />
   );
@@ -49,6 +50,7 @@ export function SlideTile({ src, index }: { src: string; index: number }) {
         <span className="text-[11px] font-medium text-zinc-500">Slide {index + 1}</span>
         <a
           href={slideDownloadUrl(src)}
+          download
           className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] font-semibold text-zinc-300 transition-colors hover:border-violet-500/60 hover:text-violet-200"
         >
           ⬇ HD PNG

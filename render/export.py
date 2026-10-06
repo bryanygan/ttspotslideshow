@@ -21,7 +21,13 @@ def _atomic_save(img: Image.Image, dest: Path, **kw) -> None:
     tmp = dest.with_name(f"{dest.name}.{uuid.uuid4().hex}.tmp")
     try:
         img.save(tmp, "WEBP", **kw)
-        os.replace(tmp, dest)
+        try:
+            os.replace(tmp, dest)
+        except PermissionError:
+            # On Windows, replacing a file currently open for reading fails with
+            # PermissionError. If dest already exists, the existing file is complete.
+            if not dest.exists():
+                raise
     finally:
         tmp.unlink(missing_ok=True)
 
