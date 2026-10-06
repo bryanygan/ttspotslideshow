@@ -170,3 +170,57 @@ def test_get_slide_rejects_path_traversal(monkeypatch, tmp_path):
     handler.handle_get_slide(urlparse("http://x/api/slides/../../secret.txt"))
 
     assert handler.response == 403
+
+
+def _real_slide(tmp_path, monkeypatch):
+    from PIL import Image
+    slides = tmp_path / "output" / "slides" / "2026-10-06"
+    slides.mkdir(parents=True)
+    Image.new("RGB", (1080, 1700), "blue").save(slides / "slide_1.png")
+    monkeypatch.chdir(tmp_path)
+    return slides
+
+
+def _header(handler, name):
+    return dict(handler.response_headers).get(name)
+
+
+def test_get_slide_generates_missing_webp_preview(monkeypatch, tmp_path):
+    slides = _real_slide(tmp_path, monkeypatch)
+    for name in ("slide_1.webp", "slide_1.thumb.webp"):
+        handler = DummyHandler()
+        handler.handle_get_slide(urlparse(f"http://x/api/slides/2026-10-06/{name}"))
+        assert handler.response == 200
+        assert _header(handler, "Content-Type") == "image/webp"
+        assert handler.wfile.content[8:12] == b"WEBP"
+    assert (slides / "slide_1.thumb.webp").exists()
+
+
+def test_get_slide_webp_without_png_is_404(monkeypatch, tmp_path):
+    (tmp_path / "output" / "slides" / "d").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+    handler = DummyHandler()
+    handler.handle_get_slide(urlparse("http://x/api/slides/d/slide_9.webp"))
+    assert handler.response == 404
+
+
+def test_get_slide_returns_304_for_matching_etag(monkeypatch, tmp_path):
+    _real_slide(tmp_path, monkeypatch)
+    first = DummyHandler()
+    first.handle_get_slide(urlparse("http://x/api/slides/2026-10-06/slide_1.png"))
+    etag = _header(first, "ETag")
+    assert etag and _header(first, "Cache-Control")
+
+    second = DummyHandler()
+    second.headers["If-None-Match"] = etag
+    second.handle_get_slide(urlparse("http://x/api/slides/2026-10-06/slide_1.png"))
+    assert second.response == 304
+    assert second.wfile.content == b""
+
+
+def test_get_slide_download_sets_attachment(monkeypatch, tmp_path):
+    _real_slide(tmp_path, monkeypatch)
+    handler = DummyHandler()
+    handler.handle_get_slide(urlparse("http://x/api/slides/2026-10-06/slide_1.png?download=1"))
+    assert handler.response == 200
+    assert _header(handler, "Content-Disposition") == 'attachment; filename="2026-10-06_slide_1.png"'

@@ -27,12 +27,9 @@ from pathlib import Path
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 # Small, fast model chosen for a low-RAM mini PC that also runs Homebridge.
 CAPTION_MODEL = os.environ.get("CAPTION_MODEL", "llama3.2:1b")
-# keep_alive "0" => unload the model from RAM immediately after the call. This
-# is deliberate: the host has little spare RAM and also runs Homebridge, so we
-# never leave the model resident. Cold-start is ~7s on an Intel N95, which is
-# fine for a bi-daily job. Set CAPTION_KEEP_ALIVE=5m on a roomier host to keep
-# it warm for snappier interactive (dashboard) use.
-KEEP_ALIVE = os.environ.get("CAPTION_KEEP_ALIVE", "0")
+# Short keep-alive: repeat dashboard captions skip the cold load, but the RAM
+# (shared with Homebridge on this host) is freed two minutes after the last call.
+KEEP_ALIVE = os.environ.get("CAPTION_KEEP_ALIVE", "2m")
 REQUEST_TIMEOUT = float(os.environ.get("CAPTION_TIMEOUT", "60"))
 
 _CAPTIONS_FILE = Path(__file__).resolve().parent.parent / "data" / "captions.txt"
@@ -135,6 +132,22 @@ This rotation leans on these genres: {genres_str}
 (artists included, only use if it feels natural: {artists_str}).{title_line}
 
 Write ONE new caption in my voice (text only, no hashtags):"""
+
+
+def warm_up() -> None:
+    """Load the caption model ahead of time (an empty-prompt request only loads it)."""
+    if os.environ.get("CAPTION_AI", "1").strip().lower() in ("0", "false", "no", "off"):
+        return
+    data = json.dumps({"model": CAPTION_MODEL, "keep_alive": KEEP_ALIVE}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{OLLAMA_HOST}/api/generate", data=data,
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT):
+            pass
+    except (urllib.error.URLError, ValueError, OSError):
+        pass
 
 
 def _call_ollama(prompt: str) -> str | None:

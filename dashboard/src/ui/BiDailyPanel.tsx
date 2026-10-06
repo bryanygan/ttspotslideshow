@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useBidaily } from "../lib/useBidaily";
 import type { BidailyEntry } from "../lib/types";
 import { CopyButton } from "./CopyButton";
+import { SlideThumb, SlideTile } from "./SlideTile";
 
 function fmtDate(iso: string): string {
   // iso is YYYY-MM-DD — render as a friendly label without timezone drift.
@@ -102,12 +103,12 @@ export function BiDailyPanel({ apiBase, active }: { apiBase: string; active: boo
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 {e.slides.slice(0, 4).map((url, i) => (
-                  <img
+                  <SlideThumb
                     key={url}
                     src={`${apiBase}${url}`}
                     alt={`${e.date} slide ${i + 1}`}
-                    loading="lazy"
-                    className="w-full rounded-md border border-zinc-800"
+                    sizes="(min-width: 640px) 25vw, 50vw"
+                    className="rounded-md border border-zinc-800"
                   />
                 ))}
               </div>
@@ -141,25 +142,12 @@ export function BiDailyPanel({ apiBase, active }: { apiBase: string; active: boo
             </div>
 
             <span className="mb-2 block rounded-lg border border-emerald-800/60 bg-emerald-950/40 px-2.5 py-1 text-center text-xs text-emerald-300">
-              📱 Long-press a slide → Add to Photos
+              📱 Tap a slide for the HD PNG → long-press → Add to Photos
             </span>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {open.slides.map((url, i) => (
-                <a
-                  key={url}
-                  href={`${apiBase}${url}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex flex-col gap-1.5"
-                >
-                  <img
-                    src={`${apiBase}${url}`}
-                    alt={`Slide ${i + 1}`}
-                    className="w-full rounded-xl border border-zinc-800"
-                  />
-                  <span className="text-center text-[11px] text-zinc-500">Slide {i + 1}</span>
-                </a>
+                <SlideTile key={url} src={`${apiBase}${url}`} index={i} />
               ))}
             </div>
 

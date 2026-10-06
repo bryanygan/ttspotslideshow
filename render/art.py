@@ -7,7 +7,7 @@ from typing import Callable, Optional
 
 # is_placeholder / DEFAULT_ART_HASH live in webutil now (shared with ingest, which
 # previously had to import them from render). Re-exported here for existing callers.
-from webutil import DEFAULT_ART_HASH, is_placeholder  # noqa: F401
+from webutil import DEFAULT_ART_HASH, LASTFM_HIRES, LASTFM_LOWRES, is_placeholder  # noqa: F401
 
 
 def _default_fetch(url: str, dest: Path, timeout: int = 20) -> None:
@@ -42,6 +42,8 @@ def load_art(
     except Exception:
         if dest.exists():
             dest.unlink(missing_ok=True)
+        if LASTFM_HIRES in art_url:
+            return load_art(art_url.replace(LASTFM_HIRES, LASTFM_LOWRES), cache_dir, fetch)
         return None
 
     return dest if dest.exists() else None

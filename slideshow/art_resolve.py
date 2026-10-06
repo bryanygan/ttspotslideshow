@@ -10,7 +10,7 @@ import re
 from typing import Callable, Optional
 
 from text_norm import normalize
-from webutil import itunes_search
+from webutil import hires_art_url, is_lastfm_url, is_placeholder, itunes_search
 
 
 def clean_term(text: str) -> str:
@@ -113,7 +113,14 @@ def resolve_art_url(track, fetch: Optional[Callable[[str], str]] = None,
                 cache[key] = spotify_art
             return spotify_art
 
-    # 3. Fallback to iTunes Search
+    # 3. The scrobbled Last.fm cover at 770px: correct album, no confirmation needed.
+    if result.startswith("http") and is_lastfm_url(result) and not is_placeholder(result):
+        result = hires_art_url(result)
+        if cache is not None:
+            cache[key] = result
+        return result
+
+    # 4. Fallback to iTunes Search
     clean_title = clean_term(track["title"])
     clean_artist = clean_term(track["artist"])
     result = ""  # reset: don't carry forward the disqualified stored URL

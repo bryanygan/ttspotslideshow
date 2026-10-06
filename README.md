@@ -232,10 +232,10 @@ so the whole flow works from your phone. See `POST /api/caption`
 
 **Setup:** install Ollama, then `ollama pull llama3.2:1b`. The 1B model was chosen
 for a low-RAM host that also runs Homebridge — it memory-maps the weights
-(~negligible committed RAM) and `keep_alive=0` unloads it right after each call.
-Each caption call is then a ~15s cold start. If you re-roll captions a lot from
-the dashboard, set `CAPTION_KEEP_ALIVE=2m` so successive re-rolls take ~2–3s
-(the model stays resident for 2 min, then unloads).
+(~negligible committed RAM). The default `keep_alive=2m` keeps it resident for
+two minutes after each call, so successive re-rolls take ~2–3s instead of a ~15s
+cold start, then unloads. The bi-daily run also warms the model up while it
+ingests plays. Set `CAPTION_KEEP_ALIVE=0` to unload immediately after every call.
 
 **Config (all optional env vars):**
 
@@ -244,7 +244,7 @@ the dashboard, set `CAPTION_KEEP_ALIVE=2m` so successive re-rolls take ~2–3s
 | `CAPTION_AI` | `1` | Set `0`/`false` to disable the LLM and always use the deterministic caption. |
 | `CAPTION_MODEL` | `llama3.2:1b` | Any pulled Ollama model. |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Where the Ollama daemon listens. |
-| `CAPTION_KEEP_ALIVE` | `0` | Set e.g. `5m` to keep the model warm (faster, more RAM). |
+| `CAPTION_KEEP_ALIVE` | `2m` | How long the model stays loaded after a call (`0` = unload immediately). |
 | `CAPTION_TIMEOUT` | `60` | Seconds before giving up and falling back. |
 
 Add more example captions to `data/captions.txt` (one per line, blank-line-separated
