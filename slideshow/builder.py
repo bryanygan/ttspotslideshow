@@ -453,7 +453,8 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
                     today=None, fetch=None, cache_dir=None, overrides_dir=None,
                     bypass_novelty=False, cover_title=None, cover_subtitle=None,
                     cover_theme=None, watermark=None, playlist_id=None,
-                    progress=None, layout="2x2", width=None, height=None) -> dict:
+                    progress=None, allow_itunes_covers=False, layout="2x2",
+                    width=None, height=None) -> dict:
     """Build the dated slide set. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -483,7 +484,8 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
     slide_count, spread = _render_and_save(
         conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
         cover_title=cover_title, cover_subtitle=cover_subtitle,
-        cover_theme=cover_theme, watermark=watermark, progress=progress, layout=layout,
+        cover_theme=cover_theme, watermark=watermark, progress=progress,
+        allow_itunes_covers=allow_itunes_covers, layout=layout,
         width=width, height=height
     )
     summary["slide_count"] = slide_count

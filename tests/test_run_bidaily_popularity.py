@@ -20,7 +20,7 @@ def test_pipeline_runs_popularity_enrichment(monkeypatch):
     )
     monkeypatch.setattr(
         run_bidaily, "build_slideshow",
-        lambda conn, out_path: calls.__setitem__("built", True) or {"slide_count": 0},
+        lambda conn, out_path, **k: calls.__setitem__("built", True) or {"slide_count": 0},
     )
     monkeypatch.setattr(run_bidaily, "format_summary", lambda s: "ok")
 
@@ -41,7 +41,7 @@ def test_skip_popularity_flag(monkeypatch):
         run_bidaily, "enrich_all_popularity",
         lambda *a, **k: calls.__setitem__("enriched", True),
     )
-    monkeypatch.setattr(run_bidaily, "build_slideshow", lambda conn, out_path: {"slide_count": 0})
+    monkeypatch.setattr(run_bidaily, "build_slideshow", lambda conn, out_path, **k: {"slide_count": 0})
     monkeypatch.setattr(run_bidaily, "format_summary", lambda s: "ok")
 
     run_bidaily.run_pipeline(skip_spotify=True, skip_lastfm=True, skip_popularity=True)

@@ -11,6 +11,7 @@ This is intended to run as a scheduled task (e.g. via Windows Task Scheduler).
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 import config
@@ -18,7 +19,7 @@ import db
 from logger import log_recent_plays
 from ingest.lastfm_import import import_recent_from_api
 from ingest.enrich_popularity import enrich_all_popularity
-from slideshow.builder import build_slideshow
+from slideshow.builder import MissingCoverError, UnconfirmedCoverError, build_slideshow
 from slideshow.cli import format_summary
 from logsetup import setup_logging
 
@@ -91,7 +92,7 @@ def run_pipeline(
     LOG.info("Building slideshow...")
     out_path = Path(out_root)
     with db.connect() as conn:
-        slide_summary = build_slideshow(conn, out_path)
+        slide_summary = build_slideshow(conn, out_path, allow_itunes_covers=True)
     LOG.info(format_summary(slide_summary))
 
 
@@ -122,12 +123,21 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging("run_bidaily")
-    run_pipeline(
-        skip_spotify=args.skip_spotify,
-        skip_lastfm=args.skip_lastfm,
-        skip_popularity=args.skip_popularity,
-        out_root=args.out_dir,
-    )
+    try:
+        run_pipeline(
+            skip_spotify=args.skip_spotify,
+            skip_lastfm=args.skip_lastfm,
+            skip_popularity=args.skip_popularity,
+            out_root=args.out_dir,
+        )
+    except (MissingCoverError, UnconfirmedCoverError) as e:
+        LOG.error("Slideshow not built: %s", e)
+        for track in getattr(e, "missing_tracks", None) or getattr(e, "unconfirmed_tracks", []):
+            LOG.error("  cover problem: %s - %s", track.get("artist"), track.get("title"))
+        sys.exit(2)
+    except Exception:
+        LOG.exception("Bi-daily run failed")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
