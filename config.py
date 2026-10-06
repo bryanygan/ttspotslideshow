@@ -40,6 +40,9 @@ LASTFM_USER = os.getenv("LAST_FM_USER")
 # --- ListenBrainz (popularity fallback) ---
 LISTENBRAINZ_TOKEN = os.getenv("LISTENBRAINZ_TOKEN")
 
+# --- Discord webhook for scheduled-run failure alerts (blank = disabled) ---
+DISCORD_ALERT_WEBHOOK_URL = os.getenv("DISCORD_ALERT_WEBHOOK_URL")
+
 # --- Local file paths ---
 DATA_DIR = PROJECT_ROOT / "data"
 DB_PATH = DATA_DIR / "plays.db"

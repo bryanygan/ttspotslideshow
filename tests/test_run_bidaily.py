@@ -83,7 +83,7 @@ def test_run_pipeline_skips(monkeypatch, tmp_path):
         "build_slideshow",
         lambda conn, out_path, **k: {
             "track_count": 0,
-            "slide_count": 0,
+            "slide_count": 4,
             "genre_spread": {},
             "out_dir": str(out_path),
             "days_used": 2,

@@ -30,7 +30,10 @@ Write-Host "Python: $Python`n"
 $Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Limited
 
 function Register-Job($Name, $Arguments, $Trigger) {
-    $action = New-ScheduledTaskAction -Execute $Python -Argument $Arguments -WorkingDirectory $Repo
+    # Capture stdout/stderr per job so startup errors (before logging is set up) aren't lost.
+    $taskLog = Join-Path $Repo "data\logs\$Name.task.log"
+    $cmdArgs = "/c `"`"$Python`" $Arguments >> `"$taskLog`" 2>&1`""
+    $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $cmdArgs -WorkingDirectory $Repo
     if (Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) {
         Unregister-ScheduledTask -TaskName $Name -Confirm:$false
     }

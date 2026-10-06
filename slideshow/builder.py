@@ -453,8 +453,8 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
                     today=None, fetch=None, cache_dir=None, overrides_dir=None,
                     bypass_novelty=False, cover_title=None, cover_subtitle=None,
                     cover_theme=None, watermark=None, playlist_id=None,
-                    progress=None, allow_itunes_covers=False, layout="2x2",
-                    width=None, height=None) -> dict:
+                    progress=None, allow_itunes_covers=False, exclude_keys=None,
+                    layout="2x2", width=None, height=None) -> dict:
     """Build the dated slide set. Returns a run summary."""
     run_date = today or date.today().isoformat()
     cache_dir = Path(cache_dir) if cache_dir else (Path("data") / "album_art")
@@ -463,6 +463,8 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
     slide_size = 9 if layout == "3x3" else (16 if layout == "4x4" else 4)
 
     candidates, days_used = resolve_window(conn, target, floor, now_unix=now_unix)
+    if exclude_keys:
+        candidates = [c for c in candidates if c["track_key"] not in exclude_keys]
     featured = {} if bypass_novelty else db.featured_history(conn)
     tracks = select_tracks(candidates, featured, run_date, target, floor)
     dispersed = disperse_tracks(tracks, slide_size=slide_size)
