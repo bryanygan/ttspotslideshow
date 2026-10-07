@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useBidaily } from "../lib/useBidaily";
 import type { BidailyEntry } from "../lib/types";
 import { CopyButton } from "./CopyButton";
+import { SaveAllButton } from "./SaveAllButton";
 import { SlideThumb, SlideTile } from "./SlideTile";
 
 function fmtDate(iso: string): string {
@@ -141,9 +142,9 @@ export function BiDailyPanel({ apiBase, active }: { apiBase: string; active: boo
               </button>
             </div>
 
-            <span className="mb-2 block rounded-lg border border-emerald-800/60 bg-emerald-950/40 px-2.5 py-1 text-center text-xs text-emerald-300">
-              📱 Tap a slide for the HD PNG → long-press → Add to Photos
-            </span>
+            <div className="mb-3">
+              <SaveAllButton urls={open.slides.map((url) => `${apiBase}${url}`)} />
+            </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {open.slides.map((url, i) => (

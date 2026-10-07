@@ -6,6 +6,7 @@ import { PRESETS } from "../../lib/presets";
 import { AlbumArt } from "../../ui/AlbumArt";
 import { ArtUploadButton } from "../../ui/ArtUploadButton";
 import { CoverControls } from "../../ui/CoverControls";
+import { SaveAllButton } from "../../ui/SaveAllButton";
 import { SelectedTray } from "../../ui/SelectedTray";
 import { SlideGallery } from "../../ui/SlideGallery";
 import { SlideTile } from "../../ui/SlideTile";
@@ -1027,6 +1028,7 @@ function HistoryRecapDetail({ r }: { r: RecapState }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <SaveAllButton urls={r.selectedRecapSlides.map((url) => `${r.apiBase}${url}`)} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {r.selectedRecapSlides.map((url, i) => (
           <SlideTile key={url} src={`${r.apiBase}${url}`} index={i} />

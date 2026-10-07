@@ -1,5 +1,6 @@
 import type { RecapState } from "../lib/useRecap";
 import { CopyButton } from "./CopyButton";
+import { SaveAllButton } from "./SaveAllButton";
 import { SlideTile } from "./SlideTile";
 
 // Rendered slides + save-to-Photos guidance, shown after a successful generate.
@@ -8,21 +9,19 @@ export function SlideGallery({ r }: { r: RecapState }) {
   if (r.slideUrls.length === 0) return null;
 
   const caption = r.summary?.caption;
+  const fullUrls = r.slideUrls.map((url) => `${r.apiBase}${url}`);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-200">
-          Your slides ({r.slideUrls.length})
-        </h3>
-        <span className="rounded-lg border border-emerald-800/60 bg-emerald-950/40 px-2.5 py-1 text-xs text-emerald-300">
-          📱 Tap a slide for the HD PNG → long-press → Add to Photos
-        </span>
-      </div>
+      <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-200">
+        Your slides ({r.slideUrls.length})
+      </h3>
+
+      <SaveAllButton urls={fullUrls} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {r.slideUrls.map((url, i) => (
-          <SlideTile key={url} src={`${r.apiBase}${url}`} index={i} />
+        {fullUrls.map((src, i) => (
+          <SlideTile key={src} src={src} index={i} />
         ))}
       </div>
 

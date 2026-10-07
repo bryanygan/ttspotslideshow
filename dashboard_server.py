@@ -1067,6 +1067,7 @@ class DashboardHandlerHelper:
             ".jpg": "image/jpeg",
             ".svg": "image/svg+xml",
             ".json": "application/json",
+            ".webmanifest": "application/manifest+json",
             ".ico": "image/x-icon",
             ".woff": "font/woff",
             ".woff2": "font/woff2",
