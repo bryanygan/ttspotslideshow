@@ -17,6 +17,34 @@ import db
 
 START_TIME = time.time()
 
+_SLIDE_TYPES = {".png": "image/png", ".webp": "image/webp", ".mp4": "video/mp4",
+                ".txt": "text/plain; charset=utf-8"}
+# Short freshness + ETag: browsers reuse slides, and a same-day regeneration
+# (which overwrites slide files) still shows up within a minute.
+_SLIDE_CACHE_CONTROL = "public, max-age=60"
+_PREVIEW_LOCK = threading.Lock()
+
+
+def _ensure_slide_previews(webp_path: Path) -> None:
+    if webp_path.exists():
+        return
+    with _PREVIEW_LOCK:
+        if webp_path.exists():
+            return
+        from PIL import Image
+        from render.export import write_previews
+
+        name = webp_path.name
+        stem = name[: -len(".thumb.webp")] if name.lower().endswith(".thumb.webp") else webp_path.stem
+        png = webp_path.with_name(stem + ".png")
+        if not png.exists():
+            return
+        try:
+            with Image.open(png) as im:
+                write_previews(im, png)
+        except Exception as e:
+            print(f"[slides] preview generation failed for {png}: {e}", flush=True)
+
 
 
 class RateLimiter:
@@ -544,16 +572,35 @@ class DashboardHandlerHelper:
             self.send_error(404, "Not Found")
             return
 
+        # Slides made before WebP previews existed get them generated on first request.
+        ext = file_path.suffix.lower()
+        if ext == ".webp" and not file_path.exists():
+            _ensure_slide_previews(file_path)
+
         if not file_path.exists() or file_path.is_dir():
             self.send_error(404, "Not Found")
             return
 
+        stat = file_path.stat()
+        etag = f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", _SLIDE_CACHE_CONTROL)
+            self.end_headers()
+            return
+
         self.send_response(200)
-        self.send_header("Content-Type", "image/png")
-        self.send_header("Content-Length", str(file_path.stat().st_size))
+        self.send_header("Content-Type", _SLIDE_TYPES.get(ext, "application/octet-stream"))
+        self.send_header("Content-Length", str(stat.st_size))
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", _SLIDE_CACHE_CONTROL)
+        if "download" in parse_qs(parsed.query):
+            safe = re.sub(r"[^A-Za-z0-9._-]", "_", f"{file_path.parent.name}_{file_path.name}")
+            self.send_header("Content-Disposition", f'attachment; filename="{safe}"')
         self.end_headers()
         with open(file_path, "rb") as f:
-            self.wfile.write(f.read())
+            shutil.copyfileobj(f, self.wfile)
 
     def handle_get_override(self, parsed):
         """Serve a manual art override image from data/art_overrides/<file>."""
@@ -1020,6 +1067,7 @@ class DashboardHandlerHelper:
             ".jpg": "image/jpeg",
             ".svg": "image/svg+xml",
             ".json": "application/json",
+            ".webmanifest": "application/manifest+json",
             ".ico": "image/x-icon",
             ".woff": "font/woff",
             ".woff2": "font/woff2",

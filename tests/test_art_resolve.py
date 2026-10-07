@@ -34,7 +34,7 @@ def test_empty_if_no_spotify_or_itunes_cover(monkeypatch):
     # Pass a fetch mock that returns empty iTunes results
     empty_itunes = lambda url: '{"resultCount":0,"results":[]}'
 
-    out = resolve_art_url(_track(art="https://lastfm/300.jpg"), fetch=empty_itunes)
+    out = resolve_art_url(_track(art=""), fetch=empty_itunes)
     assert out == ""
 
 
@@ -45,7 +45,7 @@ def test_fallback_to_itunes_when_spotify_unavailable(monkeypatch):
     )
     fetch_mock = lambda url: itunes_response
 
-    track = _track(art="https://lastfm/300.jpg")
+    track = _track(art="")
     out = resolve_art_url(track, fetch=fetch_mock)
     # Should upgrade 100x100 to 600x600
     assert "600x600" in out
@@ -77,3 +77,23 @@ def test_cache_avoids_second_search(monkeypatch):
     assert out1 == "https://spotify/mock_image.jpg"
     assert out2 == "https://spotify/mock_image.jpg"
     assert called_count == 1
+
+
+LASTFM_300 = "https://lastfm.freetls.fastly.net/i/u/300x300/abc123.jpg"
+
+
+def test_lastfm_cover_upgraded_before_itunes(monkeypatch):
+    import slideshow.art_resolve as ar
+    monkeypatch.setattr(ar, "search_spotify_art", lambda a, t: None)
+    itunes_called = []
+    out = resolve_art_url(_track(art=LASTFM_300), fetch=lambda url: itunes_called.append(url) or "{}")
+    assert out == "https://lastfm.freetls.fastly.net/i/u/770x0/abc123.jpg"
+    assert itunes_called == []
+
+
+def test_lastfm_placeholder_still_falls_back_to_itunes():
+    from webutil import DEFAULT_ART_HASH
+    itunes_response = '{"results":[{"artworkUrl100":"https://is1-ssl.mzstatic.com/x/100x100bb.jpg"}]}'
+    placeholder = f"https://lastfm.freetls.fastly.net/i/u/300x300/{DEFAULT_ART_HASH}.png"
+    out = resolve_art_url(_track(art=placeholder), fetch=lambda url: itunes_response)
+    assert _is_itunes_url(out)

@@ -14,6 +14,7 @@ from slideshow.art_resolve import resolve_art_url
 from render.art import load_art, find_override_art
 from render.card import render_card
 from render.collage import collage
+from render.export import save_slide
 
 
 def _save_caption(out_dir: Path, caption: str) -> None:
@@ -157,7 +158,7 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
     If `cover_pool` is provided (list of image URLs), we resolve those.
     Otherwise, we collect from all-time history, shuffled.
     """
-    from webutil import is_placeholder
+    from webutil import hires_art_url, is_placeholder
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import hashlib
 
@@ -188,6 +189,7 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
                     continue
 
             if not is_placeholder(url):
+                url = hires_art_url(url)
                 digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
                 dest = Path(cache_dir) / f"{digest}.jpg"
                 if dest.exists():
@@ -245,7 +247,7 @@ def _collage_art_paths(conn, cache_dir, overrides_dir=None, cap=60, cover_pool=N
             local_paths.append(override)
             continue
 
-        url = c.get("album_art_url")
+        url = hires_art_url(c.get("album_art_url"))
         if url and not is_placeholder(url):
             digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
             dest = Path(cache_dir) / f"{digest}.jpg"
@@ -313,7 +315,7 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
             rows=cover_rows,
             width=cover_w, height=cover_h
         )
-        cover.save(out_dir / "slide_1.png")
+        save_slide(cover, out_dir / "slide_1.png")
         if progress:
             progress.emit("collage", 1, 1, "Cover slide done")
         return 1, {}
@@ -427,7 +429,7 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
             width=cover_w, height=cover_h
         )
         slide_count += 1
-        cover.save(out_dir / f"slide_{slide_count}.png")
+        save_slide(cover, out_dir / f"slide_{slide_count}.png")
         collage_done = 1
         if progress:
             progress.emit("collage", collage_done, num_collages, "Cover slide done")
@@ -435,7 +437,11 @@ def _render_and_save(conn, rendered, out_dir, featured_date, fetch, cache_dir,
     for i in range(0, len(cards), slide_size):
         slide_count += 1
         collage_done += 1
-        collage(cards[i:i + slide_size], layout=layout, watermark=watermark, width=slide_w, height=slide_h).save(out_dir / f"slide_{slide_count}.png")
+        save_slide(
+            collage(cards[i:i + slide_size], layout=layout, watermark=watermark,
+                    width=slide_w, height=slide_h),
+            out_dir / f"slide_{slide_count}.png",
+        )
         if progress:
             progress.emit("collage", collage_done, num_collages,
                           f"Slide {slide_count} composed")
@@ -483,13 +489,19 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
     if not rendered:
         return summary
 
-    slide_count, spread = _render_and_save(
-        conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
-        cover_title=cover_title, cover_subtitle=cover_subtitle,
-        cover_theme=cover_theme, watermark=watermark, progress=progress,
-        allow_itunes_covers=allow_itunes_covers, layout=layout,
-        width=width, height=height
-    )
+    # The LLM caption needs only the track list, so it runs while slides render.
+    caption_pool = ThreadPoolExecutor(max_workers=1)
+    caption_future = caption_pool.submit(generate_caption, rendered, cover_title=cover_title)
+    try:
+        slide_count, spread = _render_and_save(
+            conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
+            cover_title=cover_title, cover_subtitle=cover_subtitle,
+            cover_theme=cover_theme, watermark=watermark, progress=progress,
+            allow_itunes_covers=allow_itunes_covers, layout=layout,
+            width=width, height=height
+        )
+    finally:
+        caption_pool.shutdown(wait=False)
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
 
@@ -500,8 +512,7 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
         if playlist_url:
             summary["playlist_url"] = playlist_url
 
-    # Generate TikTok-ready caption with hashtags
-    summary["caption"] = generate_caption(rendered, cover_title=cover_title)
+    summary["caption"] = caption_future.result()
     _save_caption(out_dir, summary["caption"])
 
     return summary
@@ -547,14 +558,19 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
     # Store the plain ISO run_date (NOT the "recap-" folder name): the selector's
     # novelty check parses last_featured_date with date.fromisoformat(), so a
     # "recap-..." string here would crash the next regular build.
-    slide_count, spread = _render_and_save(
-        conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
-        cover_title=cover_title, cover_subtitle=cover_subtitle,
-        cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool,
-        progress=progress, allow_itunes_covers=allow_itunes_covers, layout=layout,
-        cover_only=cover_only, cover_columns=cover_columns, cover_rows=cover_rows,
-        width=width, height=height
-    )
+    caption_pool = ThreadPoolExecutor(max_workers=1)
+    caption_future = caption_pool.submit(generate_caption, rendered, cover_title=cover_title)
+    try:
+        slide_count, spread = _render_and_save(
+            conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
+            cover_title=cover_title, cover_subtitle=cover_subtitle,
+            cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool,
+            progress=progress, allow_itunes_covers=allow_itunes_covers, layout=layout,
+            cover_only=cover_only, cover_columns=cover_columns, cover_rows=cover_rows,
+            width=width, height=height
+        )
+    finally:
+        caption_pool.shutdown(wait=False)
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
 
@@ -573,8 +589,7 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
         if video_path:
             summary["video_path"] = str(video_path)
 
-    # Generate TikTok-ready caption with hashtags
-    summary["caption"] = generate_caption(rendered, cover_title=cover_title)
+    summary["caption"] = caption_future.result()
     _save_caption(out_dir, summary["caption"])
 
     return summary

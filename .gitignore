@@ -21,6 +21,7 @@ data/*.db-shm
 data/*.xml
 data/*.json
 data/*.csv
+data/*.txt
 *.log
 logs/
 

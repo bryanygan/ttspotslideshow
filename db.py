@@ -413,13 +413,13 @@ def track_keys_missing_popularity(conn: sqlite3.Connection) -> list:
         r["track_key"]
         for r in conn.execute("SELECT track_key FROM track_popularity").fetchall()
     }
-    seen = []
+    seen = set()
     out = []
     for r in canonical_plays(conn):
         track_key = normalize(r["artist"]) + "\t" + normalize(r["name"])
         if track_key in seen:
             continue
-        seen.append(track_key)
+        seen.add(track_key)
         if track_key not in cached:
             out.append(track_key)
     return out

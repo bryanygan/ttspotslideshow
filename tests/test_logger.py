@@ -51,7 +51,8 @@ def test_resolve_genre_fetches_then_serves_from_cache(conn):
     assert sp_boom.calls == 0
 
 
-def test_resolve_genre_handles_spotify_exception_and_caches_empty(conn):
+def test_resolve_genre_handles_spotify_exception_and_caches_empty(conn, monkeypatch):
+    monkeypatch.setattr(logger.time, "sleep", lambda s: None)
     sp = FakeArtistSpotify(raise_on={"a1"})
     assert logger._resolve_genre(sp, conn, "a1", "Carti") == "unknown"
     # An empty-genre artist is cached as '' so we don't refetch it forever.

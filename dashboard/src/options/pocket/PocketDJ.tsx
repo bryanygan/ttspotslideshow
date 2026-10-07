@@ -6,8 +6,10 @@ import { PRESETS } from "../../lib/presets";
 import { AlbumArt } from "../../ui/AlbumArt";
 import { ArtUploadButton } from "../../ui/ArtUploadButton";
 import { CoverControls } from "../../ui/CoverControls";
+import { SaveAllButton } from "../../ui/SaveAllButton";
 import { SelectedTray } from "../../ui/SelectedTray";
 import { SlideGallery } from "../../ui/SlideGallery";
+import { SlideTile } from "../../ui/SlideTile";
 import { Summary } from "../../ui/Summary";
 import { ErrorBanner } from "../../ui/ErrorBanner";
 import { Sheet } from "../../ui/Sheet";
@@ -1026,24 +1028,10 @@ function HistoryRecapDetail({ r }: { r: RecapState }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <SaveAllButton urls={r.selectedRecapSlides.map((url) => `${r.apiBase}${url}`)} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {r.selectedRecapSlides.map((url, i) => (
-          <a
-            key={url}
-            href={`${r.apiBase}${url}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group flex flex-col gap-1.5"
-          >
-            <img
-              src={`${r.apiBase}${url}`}
-              alt={`Slide ${i + 1}`}
-              className="w-full rounded-xl border border-zinc-800 transition-colors group-hover:border-violet-500/60"
-            />
-            <span className="text-center text-[11px] font-medium text-zinc-500">
-              Slide {i + 1}
-            </span>
-          </a>
+          <SlideTile key={url} src={`${r.apiBase}${url}`} index={i} />
         ))}
       </div>
     </div>
