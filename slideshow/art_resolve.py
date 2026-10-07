@@ -91,7 +91,8 @@ def resolve_art_url(track, fetch: Optional[Callable[[str], str]] = None,
     Priority:
       1. Stored URL (if not a Last.fm/Fastly low-res placeholder) — returned immediately.
       2. Spotify API search — only in production (fetch is None).
-      3. iTunes Search API fallback — URL will be flagged as needing user confirmation
+      3. The stored Last.fm cover, upgraded to its 770px variant.
+      4. iTunes Search API fallback — URL will be flagged as needing user confirmation
          by the caller (check with _is_itunes_url()).
     """
     key = normalize(track["artist"]) + "\t" + normalize(track["title"])
