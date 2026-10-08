@@ -489,19 +489,13 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
     if not rendered:
         return summary
 
-    # The LLM caption needs only the track list, so it runs while slides render.
-    caption_pool = ThreadPoolExecutor(max_workers=1)
-    caption_future = caption_pool.submit(generate_caption, rendered, cover_title=cover_title)
-    try:
-        slide_count, spread = _render_and_save(
-            conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
-            cover_title=cover_title, cover_subtitle=cover_subtitle,
-            cover_theme=cover_theme, watermark=watermark, progress=progress,
-            allow_itunes_covers=allow_itunes_covers, layout=layout,
-            width=width, height=height
-        )
-    finally:
-        caption_pool.shutdown(wait=False)
+    slide_count, spread = _render_and_save(
+        conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
+        cover_title=cover_title, cover_subtitle=cover_subtitle,
+        cover_theme=cover_theme, watermark=watermark, progress=progress,
+        allow_itunes_covers=allow_itunes_covers, layout=layout,
+        width=width, height=height
+    )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
 
@@ -512,7 +506,7 @@ def build_slideshow(conn, out_root, target=16, floor=12, now_unix=None,
         if playlist_url:
             summary["playlist_url"] = playlist_url
 
-    summary["caption"] = caption_future.result()
+    summary["caption"] = generate_caption(rendered, cover_title=cover_title)
     _save_caption(out_dir, summary["caption"])
 
     return summary
@@ -558,19 +552,14 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
     # Store the plain ISO run_date (NOT the "recap-" folder name): the selector's
     # novelty check parses last_featured_date with date.fromisoformat(), so a
     # "recap-..." string here would crash the next regular build.
-    caption_pool = ThreadPoolExecutor(max_workers=1)
-    caption_future = caption_pool.submit(generate_caption, rendered, cover_title=cover_title)
-    try:
-        slide_count, spread = _render_and_save(
-            conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
-            cover_title=cover_title, cover_subtitle=cover_subtitle,
-            cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool,
-            progress=progress, allow_itunes_covers=allow_itunes_covers, layout=layout,
-            cover_only=cover_only, cover_columns=cover_columns, cover_rows=cover_rows,
-            width=width, height=height
-        )
-    finally:
-        caption_pool.shutdown(wait=False)
+    slide_count, spread = _render_and_save(
+        conn, rendered, out_dir, run_date, fetch, cache_dir, overrides_dir=overrides_dir,
+        cover_title=cover_title, cover_subtitle=cover_subtitle,
+        cover_theme=cover_theme, watermark=watermark, cover_pool=cover_pool,
+        progress=progress, allow_itunes_covers=allow_itunes_covers, layout=layout,
+        cover_only=cover_only, cover_columns=cover_columns, cover_rows=cover_rows,
+        width=width, height=height
+    )
     summary["slide_count"] = slide_count
     summary["genre_spread"] = spread
 
@@ -589,7 +578,7 @@ def build_recap_slideshow(conn, out_root, tracks: list[dict], today=None,
         if video_path:
             summary["video_path"] = str(video_path)
 
-    summary["caption"] = caption_future.result()
+    summary["caption"] = generate_caption(rendered, cover_title=cover_title)
     _save_caption(out_dir, summary["caption"])
 
     return summary

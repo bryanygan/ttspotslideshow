@@ -1,7 +1,7 @@
 <#
   Registers the ttspot-Watchdog scheduled task.
   Runs as NT AUTHORITY\SYSTEM (highest privileges) so it can start/restart Windows services.
-  Runs every 10 minutes to verify the health of Ollama and the TTSpot Dashboard.
+  Runs every 10 minutes to verify the health of the TTSpot Dashboard.
 
   Usage: open an ELEVATED (Run as administrator) PowerShell and run:
             powershell -ExecutionPolicy Bypass -File .\deploy\register_watchdog.ps1

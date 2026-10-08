@@ -18,7 +18,7 @@ Records every Spotify play, picks the best/most-underrated tracks from a rolling
 | Last.fm history import + genre enrichment | `ingest/` |
 | Album-art card renderer (Pillow) | `render/` |
 | Slideshow builder with genre variety, freshness scoring, and artist/album dispersion | `slideshow/builder.py` |
-| **AI captions** — local LLM writes the caption in your voice; hashtags added deterministically (max 5) | `slideshow/llm_caption.py` + `slideshow/caption.py` |
+| **Captions** — rotation-style caption in your voice plus genre hashtags (max 5) | `slideshow/caption.py` |
 | **Web dashboard** — browse candidates, pick tracks, tune cover settings, generate slides | `dashboard/` + `dashboard_server.py` |
 | **Screenshot OCR** — upload a Spotify queue screenshot → tracks auto-detected and added to picks | `slideshow/ocr.py` + `/api/ocr` |
 | Album art from Spotify (primary) → iTunes fallback with per-track confirm/deny UI | `slideshow/art_resolve.py` |
@@ -211,44 +211,15 @@ Each build also produces a TikTok-ready `caption` (see below).
 
 ---
 
-## AI captions
+## Captions
 
-Every slideshow gets a caption via `slideshow/caption.py`:
+Every slideshow gets a caption via `slideshow/caption.py`: a short
+rotation-style line in your voice (built from the dominant genre) plus hashtags
+from the tracks' genre buckets and a rotation-flavored filler pool. It always
+stays within **max 5 hashtags** and **<300 characters**.
 
-1. A small **local** model (default `llama3.2:1b` through [Ollama](https://ollama.com))
-   writes the caption *text* in your voice, using your past captions in
-   `data/captions.txt` as few-shot examples. Rotation-style posts are prioritized
-   as examples.
-2. Hashtags are then appended **deterministically** from the tracks' genre
-   buckets (+ a rotation-flavored filler pool) — so the **max-5-hashtags** and
-   **<300-char** rules can never be broken by the model.
-3. If Ollama is unavailable (or the model returns junk), it silently falls back
-   to an on-brand deterministic caption. A build never fails on captions.
-
-The caption is saved as `caption.txt` next to the slides and (in the dashboard)
-shown in a copyable box with a **Regenerate** button to re-roll the AI text —
-so the whole flow works from your phone. See `POST /api/caption`
-(`{tracks, cover_title}` → `{caption}`) for the re-roll endpoint.
-
-**Setup:** install Ollama, then `ollama pull llama3.2:1b`. The 1B model was chosen
-for a low-RAM host that also runs Homebridge — it memory-maps the weights
-(~negligible committed RAM). The default `keep_alive=2m` keeps it resident for
-two minutes after each call, so successive re-rolls take ~2–3s instead of a ~15s
-cold start, then unloads. The bi-daily run also warms the model up while it
-ingests plays. Set `CAPTION_KEEP_ALIVE=0` to unload immediately after every call.
-
-**Config (all optional env vars):**
-
-| Var | Default | Purpose |
-|---|---|---|
-| `CAPTION_AI` | `1` | Set `0`/`false` to disable the LLM and always use the deterministic caption. |
-| `CAPTION_MODEL` | `llama3.2:1b` | Any pulled Ollama model. |
-| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Where the Ollama daemon listens. |
-| `CAPTION_KEEP_ALIVE` | `2m` | How long the model stays loaded after a call (`0` = unload immediately). |
-| `CAPTION_TIMEOUT` | `60` | Seconds before giving up and falling back. |
-
-Add more example captions to `data/captions.txt` (one per line, blank-line-separated
-for multi-line ones) to steer the voice.
+The caption is saved as `caption.txt` next to the slides and shown in the
+dashboard in a copyable box.
 
 ---
 
@@ -342,9 +313,9 @@ Run weekly to gradually upgrade Last.fm genres to richer Spotify genres without 
 
 ---
 
-## Reliability — run the backend and Ollama as services
+## Reliability — run the backend as a service
 
-The dashboard backend and the Ollama server are long-running, so they should run as **auto-restarting Windows services** via [NSSM](https://nssm.cc/) rather than user-session startup applications or fragile Task Scheduler tasks. This ensures they start automatically on system boot (before user login) and restart instantly if they crash.
+The dashboard backend is long-running, so it should run as an **auto-restarting Windows service** via [NSSM](https://nssm.cc/) rather than a user-session startup application or a fragile Task Scheduler task. This ensures it starts automatically on system boot (before user login) and restarts instantly if it crashes.
 
 ### 1. Run the Dashboard Backend as a Service
 ```powershell
@@ -353,20 +324,13 @@ powershell -ExecutionPolicy Bypass -File scripts\install_dashboard_service.ps1
 ```
 This installs the `ttspot-dashboard` service, disables the old `ttspot-Dashboard` task, and takes over port 8000. `scripts\uninstall_dashboard_service.ps1` reverses it.
 
-### 2. Run Ollama as a Service
-```powershell
-# One-time, from an elevated PowerShell:
-powershell -ExecutionPolicy Bypass -File scripts\install_ollama_service.ps1
-```
-This installs the `ollama` service, configures it to load your user's pulled models (from `C:\Users\Admin\.ollama\models`), and disables the default user startup shortcut (renamed to `Ollama.lnk.disabled`) to prevent port conflicts when you log in. `scripts\uninstall_ollama_service.ps1` reverses it.
-
-### 3. Register the Watchdog Scheduled Task
-To ensure absolute reliability (e.g., if either the Dashboard or Ollama APIs hang or fail to respond despite their service status being "Running"), a watchdog scheduled task is provided:
+### 2. Register the Watchdog Scheduled Task
+To ensure absolute reliability (e.g., if the Dashboard API hangs or fails to respond despite its service status being "Running"), a watchdog scheduled task is provided:
 ```powershell
 # One-time, from an elevated PowerShell:
 powershell -ExecutionPolicy Bypass -File deploy\register_watchdog.ps1
 ```
-This registers the `ttspot-Watchdog` scheduled task running under the `NT AUTHORITY\SYSTEM` account. It checks the health APIs of the Dashboard and Ollama every 10 minutes and restarts their respective services automatically if they become unresponsive. Logs are kept in `data\logs\watchdog.log`.
+This registers the `ttspot-Watchdog` scheduled task running under the `NT AUTHORITY\SYSTEM` account. It checks the Dashboard health API every 10 minutes and restarts the service automatically if it becomes unresponsive. Logs are kept in `data\logs\watchdog.log`.
 
 The periodic jobs (`ttspot-Slideshow` bi-daily, logger) stay as Task Scheduler tasks — those are short-lived and now carry restart-on-failure so a transient error (e.g. a flaky album-art download) self-heals with a retry.
 
