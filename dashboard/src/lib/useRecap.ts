@@ -13,10 +13,8 @@ import {
   savePlaylist,
   searchSpotify,
   refreshLogger,
-  regenerateCaption as regenerateCaptionApi,
   MissingCoverError,
   UnconfirmedCoverError,
-  fetchAiPicks,
 } from "./api";
 import type { RecapHistoryEntry } from "./api";
 import { PRESETS } from "./presets";
@@ -120,8 +118,6 @@ export interface RecapState {
   slideCount: number;
   leftover: number;
   generate: () => void;
-  regeneratingCaption: boolean;
-  regenerateCaption: () => void;
   layout: "2x2" | "3x3" | "4x4";
   setLayout: (v: "2x2" | "3x3" | "4x4") => void;
 
@@ -179,15 +175,6 @@ export interface RecapState {
   selectedRecapSlides: string[];
   selectedRecapLoading: boolean;
   selectRecap: (recapId: string | null) => void;
-
-  // AI DJ Picks
-  aiRecommendations: Array<{ track: Candidate; reason: string; status: 'accepted' | 'rejected' | 'pending' }>;
-  aiLoading: boolean;
-  aiError: string | null;
-  runAiPicks: (prompt: string, count: number) => Promise<void>;
-  setAiRecommendationStatus: (trackKey: string, status: 'accepted' | 'rejected' | 'pending') => void;
-  confirmAiPicks: () => void;
-  clearAiRecommendations: () => void;
 }
 
 export function useRecap(): RecapState {
@@ -644,27 +631,6 @@ export function useRecap(): RecapState {
     slideHeight,
   ]);
 
-  const [regeneratingCaption, setRegeneratingCaption] = useState(false);
-
-  const regenerateCaption = useCallback(async () => {
-    if (selectedTracks.length === 0) return;
-    setRegeneratingCaption(true);
-    setError(null);
-    try {
-      const caption = await regenerateCaptionApi(
-        apiBase,
-        selectedTracks,
-        includeCover ? coverTitle : null,
-      );
-      // Merge the fresh caption into the existing summary so the gallery updates.
-      setSummary((prev) => (prev ? { ...prev, caption } : prev));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to regenerate caption.");
-    } finally {
-      setRegeneratingCaption(false);
-    }
-  }, [apiBase, selectedTracks, includeCover, coverTitle]);
-
   const uploadArtFor = useCallback(
     async (track: Candidate, file: File) => {
       setError(null);
@@ -945,78 +911,6 @@ export function useRecap(): RecapState {
     [addCandidateToSelection],
   );
 
-  // AI DJ Picks State & Callbacks
-  const [aiRecommendations, setAiRecommendations] = useState<Array<{ track: Candidate; reason: string; status: 'accepted' | 'rejected' | 'pending' }>>([]);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  const runAiPicks = useCallback(
-    async (prompt: string, count: number) => {
-      setAiLoading(true);
-      setAiError(null);
-      try {
-        const results = await fetchAiPicks(apiBase, prompt, count, sortedCandidates);
-        setAiRecommendations(
-          results.map((r) => ({
-            track: r.track,
-            reason: r.reason,
-            status: "accepted",
-          }))
-        );
-      } catch (err) {
-        setAiRecommendations([]);
-        setAiError(err instanceof Error ? err.message : "AI picks failed.");
-      } finally {
-        setAiLoading(false);
-      }
-    },
-    [apiBase, sortedCandidates]
-  );
-
-  const setAiRecommendationStatus = useCallback(
-    (trackKey: string, status: 'accepted' | 'rejected' | 'pending') => {
-      setAiRecommendations((prev) =>
-        prev.map((rec) =>
-          rec.track.track_key === trackKey ? { ...rec, status } : rec
-        )
-      );
-    },
-    []
-  );
-
-  const confirmAiPicks = useCallback(() => {
-    const toAdd = aiRecommendations.filter((rec) => rec.status === "accepted");
-    if (toAdd.length === 0) return;
-
-    setCandidates((cands) => {
-      const existingKeys = new Set(cands.map((c) => c.track_key));
-      const newTracks = toAdd.map((rec) => rec.track).filter((t) => !existingKeys.has(t.track_key));
-      return [...cands, ...newTracks];
-    });
-
-    const newKeys = toAdd.map((rec) => rec.track.track_key);
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      for (const k of newKeys) next.add(k);
-      return next;
-    });
-    setSelectedOrder((prev) => {
-      const next = [...prev];
-      for (const k of newKeys) {
-        if (!next.includes(k)) next.push(k);
-      }
-      return next;
-    });
-
-    setAiRecommendations([]);
-    setAiError(null);
-  }, [aiRecommendations]);
-
-  const clearAiRecommendations = useCallback(() => {
-    setAiRecommendations([]);
-    setAiError(null);
-  }, []);
-
   return {
     apiBase,
     setApiBase,
@@ -1076,8 +970,6 @@ export function useRecap(): RecapState {
     slideCount,
     leftover,
     generate,
-    regeneratingCaption,
-    regenerateCaption,
     layout,
     setLayout,
     progress,
@@ -1121,15 +1013,5 @@ export function useRecap(): RecapState {
     selectedRecapId,
     selectedRecapSlides,
     selectedRecapLoading,
-    selectRecap,
-
-    // AI DJ Picks
-    aiRecommendations,
-    aiLoading,
-    aiError,
-    runAiPicks,
-    setAiRecommendationStatus,
-    confirmAiPicks,
-    clearAiRecommendations,
-  };
+    selectRecap,  };
 }

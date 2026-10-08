@@ -36,12 +36,11 @@ export function ConnectionBanner({ h }: { h: HealthState }) {
     );
   }
 
-  // Online but degraded (critical: db/disk) or with soft warnings (ollama/bidaily).
+  // Online but degraded (critical: db/disk) or with soft warnings (bidaily).
   const parts: string[] = [];
   const checks = h.health?.checks ?? {};
   if (!checks.db?.ok) parts.push("database error");
   if (!checks.disk?.ok) parts.push("low disk space");
-  if (warnings.includes("ollama")) parts.push("caption model offline (captions use the fallback)");
   if (warnings.includes("bidaily")) {
     const age = checks.bidaily?.age_days;
     parts.push(

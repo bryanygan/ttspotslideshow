@@ -12,7 +12,6 @@ This is intended to run as a scheduled task (e.g. via Windows Task Scheduler).
 import argparse
 import logging
 import sys
-import threading
 import traceback
 from pathlib import Path
 
@@ -24,7 +23,6 @@ from ingest.lastfm_import import import_recent_from_api
 from ingest.enrich_popularity import enrich_all_popularity
 from slideshow.builder import MissingCoverError, UnconfirmedCoverError, build_slideshow
 from slideshow.cli import format_summary
-from slideshow.llm_caption import warm_up as llm_warm_up
 from logsetup import setup_logging
 
 LOG = logging.getLogger("run_bidaily")
@@ -37,9 +35,6 @@ def run_pipeline(
     skip_popularity: bool = False,
     out_root: str = "output/slides",
 ) -> None:
-    # Load the caption model in the background so it's warm by the caption step.
-    threading.Thread(target=llm_warm_up, daemon=True).start()
-
     # 1. Ensure DB is migrated
     db.init_db()
 

@@ -1,15 +1,9 @@
 """Smart caption and hashtag generator for TikTok slideshows.
 
-Two paths:
-  1. An AI voice caption from a small local model (``slideshow.llm_caption``),
-     with deterministic hashtags appended here.
-  2. A fully deterministic template caption, used as the fallback whenever the
-     model is unavailable or returns junk.
-
-Either way the hashtags are generated here, so the "max 5 hashtags" rule holds.
+A deterministic rotation-style vibe line plus genre hashtags, generated
+together here so the "max 5 hashtags" rule holds.
 """
 
-import os
 import re
 
 
@@ -108,51 +102,20 @@ def _assemble_with_hashtags(body: str, tracks: list[dict], max_len: int = 300) -
     return (body[:keep].rstrip() + tail).strip()
 
 
-def generate_caption(
-    tracks: list[dict],
-    cover_title: str | None = None,
-    use_ai: bool | None = None,
-) -> str:
+def generate_caption(tracks: list[dict], cover_title: str | None = None) -> str:
     """Generate a TikTok-ready caption with hashtags.
-
-    Tries a local LLM (llama3.2:1b via Ollama) to write the caption in Bryan's
-    voice, then appends deterministic hashtags. Falls back to a fully
-    deterministic template caption if the model is unavailable or the AI path is
-    disabled.
 
     Args:
         tracks: List of track dicts with keys: artist, title, primary_bucket.
         cover_title: Optional cover slide title.
-        use_ai: Force the AI path on/off. When None (default), the AI path is on
-            unless the ``CAPTION_AI`` env var is set to a falsy value
-            ("0", "false", "no", "off").
 
     Returns:
         A caption string with at most 5 hashtags, under 300 characters.
     """
-    if not tracks:
-        return ""
-
-    if use_ai is None:
-        use_ai = os.environ.get("CAPTION_AI", "1").strip().lower() not in (
-            "0", "false", "no", "off",
-        )
-
-    if use_ai:
-        try:
-            from slideshow.llm_caption import generate_llm_caption
-
-            body = generate_llm_caption(tracks, cover_title=cover_title)
-        except Exception:
-            body = None  # any unexpected error -> fall through to template
-        if body:
-            return _assemble_with_hashtags(body, tracks)
-
     return _template_caption(tracks, cover_title=cover_title)
 
 
-# On-brand vibe lines for the deterministic fallback (used when the local model
-# is unavailable). Kept in Bryan's rotation voice — no "Featuring: X, Y" lists.
+# On-brand vibe lines for the caption. Kept in Bryan's rotation voice — no "Featuring: X, Y" lists.
 # ``{genre}`` is filled with the dominant genre bucket.
 _ROTATION_LINES = [
     "daily music rotation, been leaning heavy into {genre} lately",
@@ -176,7 +139,7 @@ def _dominant_genre(tracks: list[dict]) -> str:
 
 
 def _template_caption(tracks: list[dict], cover_title: str | None = None) -> str:
-    """Deterministic, on-brand fallback caption (no LLM).
+    """Deterministic, on-brand caption.
 
     Produces a short rotation-style vibe line in Bryan's voice plus up to 5
     genre hashtags, always under 300 characters. Deterministic per track list

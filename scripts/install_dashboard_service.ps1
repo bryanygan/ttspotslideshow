@@ -6,8 +6,7 @@ trigger never restarted it (an ~11-day outage on 2026-06/07).
 
 A Windows service is the reliable way to keep this up: NSSM auto-restarts the
 process on any exit, starts it at boot before login, and runs it under
-LocalSystem (git is on the machine PATH, so auto-git-pull still works; Ollama on
-127.0.0.1 is reachable).
+LocalSystem (git is on the machine PATH, so auto-git-pull still works).
 
 Run from an elevated PowerShell:  powershell -ExecutionPolicy Bypass -File scripts\install_dashboard_service.ps1
 #>

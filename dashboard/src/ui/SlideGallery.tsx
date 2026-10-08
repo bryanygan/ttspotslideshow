@@ -31,23 +31,9 @@ export function SlideGallery({ r }: { r: RecapState }) {
             <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-400">
               TikTok Caption
             </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={r.regenerateCaption}
-                disabled={r.regeneratingCaption}
-                className="rounded-lg border border-violet-700/60 bg-violet-900/40 px-2.5 py-1.5 text-[11px] font-semibold text-violet-300 transition-colors hover:bg-violet-800/60 disabled:opacity-50"
-              >
-                {r.regeneratingCaption ? "Rerolling…" : "🔄 Regenerate"}
-              </button>
-              <CopyButton text={caption} />
-            </div>
+            <CopyButton text={caption} />
           </div>
-          <pre
-            className={`select-all whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-violet-100/90 transition-opacity ${
-              r.regeneratingCaption ? "opacity-40" : ""
-            }`}
-          >
+          <pre className="select-all whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-violet-100/90">
             {caption}
           </pre>
         </div>

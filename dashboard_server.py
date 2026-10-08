@@ -253,10 +253,6 @@ class DashboardHandlerHelper:
             self.handle_post_spotify_search()
         elif parsed.path == "/api/logger/refresh":
             self.handle_post_logger_refresh()
-        elif parsed.path == "/api/caption":
-            self.handle_post_caption()
-        elif parsed.path == "/api/picks/ai":
-            self.handle_post_picks_ai()
         elif parsed.path == "/api/bidaily/run":
             self.handle_post_bidaily_run()
         else:
@@ -801,142 +797,6 @@ class DashboardHandlerHelper:
         except Exception as e:
             self._send_json(500, {"error": str(e)})
 
-    def handle_post_caption(self):
-        """(Re)generate just the TikTok caption for a set of tracks (no render).
-
-        Lets the dashboard re-roll the AI caption from a phone without rebuilding
-        slides. Returns {"caption": str}. Falls back to the deterministic caption
-        internally if the local model is unavailable, so this never errors on
-        that account.
-        """
-        payload = self._read_json_body()
-        if payload is None:
-            self._send_json(400, {"error": "Invalid JSON payload"})
-            return
-
-        tracks = payload.get("tracks", [])
-        cover_title = payload.get("cover_title") or None
-        if not tracks:
-            self._send_json(400, {"error": "No tracks provided for caption."})
-            return
-
-        try:
-            from slideshow.caption import generate_caption
-            caption = generate_caption(tracks, cover_title=cover_title)
-            self._send_json(200, {"caption": caption})
-        except Exception as e:
-            self._send_json(500, {"error": str(e)})
-
-    def handle_post_picks_ai(self):
-        """Use Ollama to select songs based on a vibe/theme prompt."""
-        payload = self._read_json_body()
-        if payload is None:
-            self._send_json(400, {"error": "Invalid JSON payload"})
-            return
-
-        prompt = (payload.get("prompt") or "").strip()
-        try:
-            count = min(max(int(payload.get("count", 12)), 1), 50)
-        except (TypeError, ValueError):
-            self._send_json(400, {"error": "'count' must be an integer"})
-            return
-        candidates = payload.get("candidates", [])
-
-        if not prompt:
-            self._send_json(400, {"error": "Missing 'prompt' (vibe/theme)"})
-            return
-
-        # If candidates list is empty, load from database (recent 300 unique songs)
-        if not candidates:
-            try:
-                with db.connect() as conn:
-                    candidates = db.recent_track_candidates(conn, 300)
-            except Exception as e:
-                self._send_json(500, {"error": f"Failed to fetch candidates: {e}"})
-                return
-
-        # Restrict the track pool to the first 80 items to avoid overloading local model context
-        pool_limit = 80
-        track_pool = candidates[:pool_limit]
-
-        try:
-            picks = self._ai_pick_songs(prompt, count, track_pool)
-            self._send_json(200, {"picks": picks})
-        except Exception as e:
-            self._send_json(500, {"error": str(e)})
-
-    def _ai_pick_songs(self, prompt: str, count: int, tracks: list[dict]) -> list[dict]:
-        import urllib.request
-        import urllib.error
-        from slideshow.llm_caption import OLLAMA_HOST, CAPTION_MODEL, KEEP_ALIVE, REQUEST_TIMEOUT
-        
-        # Format the list of tracks for the LLM
-        track_lines = []
-        for i, t in enumerate(tracks):
-            genre = t.get("primary_bucket") or t.get("artist_genre") or "unknown"
-            track_lines.append(f"Track {i+1}: {t['artist']} - {t['title']} (Genre: {genre})")
-        track_list_str = "\n".join(track_lines)
-
-        prompt_text = (
-            f"You are a music playlist curator assistant. Your task is to select songs from the provided list that best fit the prompt: '{prompt}'.\n"
-            f"For each song you select, you MUST output a single line in this exact format: 'Select: [track number] | Reason: [one short sentence why it fits]'\n"
-            "Example output lines:\n"
-            "Select: 3 | Reason: Upbeat energy perfect for summer road trips\n"
-            "Select: 14 | Reason: Relaxing melody ideal for focus or a slow day\n\n"
-            "Rules:\n"
-            f"- Select up to {count} songs. Do not select more than {count} songs.\n"
-            "- Only select songs that actually exist in the list below.\n"
-            "- Do not include any other text, greetings, explanation, markdown backticks, or intro/outro lines. Just list the selections line-by-line.\n\n"
-            f"List of available songs:\n{track_list_str}\n\n"
-            "Write your selections:"
-        )
-
-        payload = {
-            "model": CAPTION_MODEL,
-            "prompt": prompt_text,
-            "stream": False,
-            "keep_alive": KEEP_ALIVE,
-            "options": {"temperature": 0.3, "num_predict": 500},
-        }
-
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            f"{OLLAMA_HOST}/api/generate",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-
-        timeout = max(float(REQUEST_TIMEOUT), 90.0)
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-                response_text = body.get("response") or ""
-        except Exception as e:
-            raise RuntimeError(f"Ollama request failed: {e}")
-
-        # Parse response
-        selections = []
-        seen_keys = set()
-        for line in response_text.splitlines():
-            match = re.search(r"Select:\s*(\d+)\s*(?:\||:|-)\s*Reason:\s*(.*)", line, re.IGNORECASE)
-            if match:
-                idx = int(match.group(1)) - 1
-                reason = match.group(2).strip()
-                if 0 <= idx < len(tracks):
-                    track = tracks[idx]
-                    track_key = track.get("track_key")
-                    if track_key not in seen_keys:
-                        seen_keys.add(track_key)
-                        selections.append({
-                            "track": track,
-                            "reason": reason
-                        })
-                        if len(selections) >= count:
-                            break
-
-        return selections
-
     def handle_post_playlist_save(self):
         """Save selected tracks back to a new or existing Spotify playlist."""
         payload = self._read_json_body()
@@ -1331,7 +1191,6 @@ class DashboardHandlerHelper:
             "uptime": uptime,
             "services": {
                 "ttspot-dashboard": get_service_state("ttspot-dashboard"),
-                "ollama": get_service_state("ollama"),
             },
             "tasks": {
                 "ttspot-Watchdog": get_task_status("ttspot-Watchdog"),
@@ -1339,7 +1198,7 @@ class DashboardHandlerHelper:
                 "ttspot-Logger": get_task_status("ttspot-Logger"),
                 "ttspot-GenreRefresh": get_task_status("ttspot-GenreRefresh"),
             },
-            "logs": ["dashboard", "watchdog", "ollama_service", "run_bidaily", "logger", "enrich", "service"],
+            "logs": ["dashboard", "watchdog", "run_bidaily", "logger", "enrich", "service"],
         }
         self._send_json(200, payload)
 
@@ -1375,7 +1234,7 @@ class DashboardHandlerHelper:
         """Report backend subsystem health for the dashboard's status monitor.
 
         Always returns 200 (reachability itself signals the server is up). DB and
-        disk are treated as critical; Ollama and bi-daily staleness are warnings.
+        disk are treated as critical; bi-daily staleness is a warning.
         """
         checks = {}
 
@@ -1385,18 +1244,6 @@ class DashboardHandlerHelper:
             checks["db"] = {"ok": True}
         except Exception as e:
             checks["db"] = {"ok": False, "error": str(e)}
-
-        try:
-            import urllib.request
-            from slideshow.llm_caption import OLLAMA_HOST, CAPTION_MODEL
-            req = urllib.request.Request(f"{OLLAMA_HOST}/api/tags")
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            names = [m.get("name", "") for m in data.get("models", [])]
-            base = CAPTION_MODEL.split(":")[0]
-            checks["ollama"] = {"ok": True, "model_available": any(base in n for n in names)}
-        except Exception as e:
-            checks["ollama"] = {"ok": False, "error": str(e)}
 
         try:
             _, _, free = shutil.disk_usage(".")
@@ -1420,7 +1267,7 @@ class DashboardHandlerHelper:
             checks["bidaily"] = {"ok": False, "error": str(e)}
 
         critical_ok = checks["db"]["ok"] and checks["disk"]["ok"]
-        warnings = [k for k in ("ollama", "bidaily") if not checks[k].get("ok")]
+        warnings = [k for k in ("bidaily",) if not checks[k].get("ok")]
         self._send_json(200, {
             "status": "ok" if critical_ok else "degraded",
             "warnings": warnings,
